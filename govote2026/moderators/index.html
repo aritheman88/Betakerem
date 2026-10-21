@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>מנהלים · בית הכרם יוצאת להצביע</title>
+  <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../style.css?v=2">
+  <style>
+    .wrap { padding: 16px; max-width: 1200px; margin: 0 auto; width: 100%; }
+    .login { max-width: 360px; margin: 12vh auto 0; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 20px; box-shadow: var(--shadow); }
+    .login h1 { margin: 0 0 12px; font-size: 1.3rem; color: var(--brand); }
+    .login input { width: 100%; font: inherit; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+    .bar-top { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+    .bar-top h1 { margin: 0 0 0 auto; font-size: 1.3rem; color: var(--brand); }
+    .bar-top input, .bar-top select { font: inherit; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); color: var(--ink); }
+    .summary { color: var(--muted); font-size: .92rem; margin-bottom: 8px; }
+    .summary b { color: var(--ink); }
+    .table-wrap { overflow-x: auto; background: var(--card); border: 1px solid var(--line); border-radius: 12px; }
+    table { border-collapse: collapse; width: 100%; font-size: .92rem; }
+    th, td { padding: 8px 10px; border-bottom: 1px solid var(--line); text-align: right; vertical-align: top; white-space: nowrap; }
+    th { position: sticky; top: 0; background: var(--card); cursor: pointer; user-select: none; }
+    td.names { white-space: normal; min-width: 120px; }
+    td a { color: var(--brand); font-weight: 600; text-decoration: none; }
+    .pill { display: inline-flex; align-items: center; gap: 6px; }
+    .muted { color: var(--muted); }
+    .ltr { direction: ltr; unicode-bidi: isolate; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <form class="login" id="login" hidden>
+      <h1>כניסת מנהלים</h1>
+      <label class="field" for="pw" style="display:block;margin-bottom:6px;font-weight:600">סיסמה</label>
+      <input id="pw" type="password" autocomplete="current-password" required>
+      <button class="btn" type="submit">כניסה</button>
+      <div class="msg err" id="login-err" hidden></div>
+    </form>
+
+    <section id="panel" hidden>
+      <div class="bar-top">
+        <h1>מתנדבים ובלוקים</h1>
+        <input id="q" type="search" placeholder="חיפוש שם, טלפון, רחוב או בלוק…" aria-label="חיפוש">
+        <select id="status" aria-label="סינון לפי מצב">
+          <option value="taken">נתפסו</option>
+          <option value="all">הכול</option>
+          <option value="free">פנויים</option>
+          <option value="claimed">נתפס, טרם התחיל</option>
+          <option value="in_progress">בסיבוב</option>
+          <option value="done">הושלם</option>
+        </select>
+        <button class="btn ghost" id="csv" type="button">הורדת CSV</button>
+        <button class="btn ghost" id="logout" type="button">יציאה</button>
+      </div>
+      <div class="summary" id="summary"></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th data-k="block_id">בלוק</th><th data-k="label">כתובת</th><th data-k="apartments">דירות</th>
+            <th data-k="status">מצב</th><th data-k="names">מתנדבים</th><th data-k="phone">טלפון</th>
+            <th data-k="slots">משמרות</th><th data-k="claimed_at">נתפס</th><th data-k="started_at">התחיל</th><th data-k="done_at">הסתיים</th>
+          </tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+      <p class="muted" style="font-size:.85rem">מתעדכן אוטומטית כל 30 שניות. המידע כאן פרטי – אין לשתף מספרי טלפון מחוץ לצוות.</p>
+    </section>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
+  <script src="../config.js?v=2"></script>
+  <script>
+  'use strict';
+  const CFG = window.GOVOTE_CONFIG;
+  const sb = supabase.createClient(CFG.supabaseUrl, CFG.supabaseKey);
+  const SLOT = { '09-11': '09–11', '11-13': '11–13', '13-15': '13–15', '15-17': '15–17' };
+  const STATUS = { free: 'פנוי', claimed: 'נתפס', in_progress: 'בסיבוב', done: 'הושלם' };
+  const ORDER = { free: 0, claimed: 1, in_progress: 2, done: 3 };
+  let rows = [], sortKey = 'block_id', sortDir = 1, timer = null;
+
+  const pwKey = 'gv26_mod_pw';
+  const getPw = () => { try { return sessionStorage.getItem(pwKey) || ''; } catch { return ''; } };
+  const setPw = v => { try { v ? sessionStorage.setItem(pwKey, v) : sessionStorage.removeItem(pwKey); } catch { /* ignore */ } };
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const time = t => t ? new Date(t).toLocaleString('he-IL', { timeZone: 'Asia/Jerusalem', day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+  const phoneFmt = p => p ? p.replace(/^(05\d)(\d{7})$/, '$1-$2') : '';
+
+  async function load(pw) {
+    const { data, error } = await sb.rpc('moderator_claims', { p_password: pw });
+    if (error) return { ok: false, error: 'network' };
+    return data;
+  }
+
+  async function login(pw) {
+    const res = await load(pw);
+    if (!res.ok) {
+      const err = document.getElementById('login-err');
+      err.hidden = false;
+      err.textContent = res.error === 'locked' ? 'יותר מדי ניסיונות. נסו שוב בעוד רבע שעה.'
+        : res.error === 'bad_password' ? 'סיסמה שגויה.' : 'בעיית חיבור, נסו שוב.';
+      setPw('');
+      showLogin();
+      return;
+    }
+    setPw(pw);
+    rows = res.rows;
+    document.getElementById('login').hidden = true;
+    document.getElementById('panel').hidden = false;
+    render();
+    clearInterval(timer);
+    timer = setInterval(refresh, 30000);
+  }
+
+  async function refresh() {
+    const res = await load(getPw());
+    if (res.ok) { rows = res.rows; render(); }
+  }
+
+  function showLogin() {
+    clearInterval(timer);
+    document.getElementById('panel').hidden = true;
+    document.getElementById('login').hidden = false;
+    document.getElementById('pw').focus();
+  }
+
+  function filtered() {
+    const q = document.getElementById('q').value.trim().toLowerCase();
+    const st = document.getElementById('status').value;
+    const qDigits = q.replace(/\D/g, '');
+    return rows.filter(r => {
+      if (st === 'taken' && r.status === 'free') return false;
+      if (st !== 'taken' && st !== 'all' && r.status !== st) return false;
+      if (!q) return true;
+      return [r.block_id, r.label, r.names].some(v => (v || '').toLowerCase().includes(q))
+        || (qDigits.length >= 3 && (r.phone || '').includes(qDigits));
+    }).sort((a, b) => {
+      let x = a[sortKey], y = b[sortKey];
+      if (sortKey === 'status') { x = ORDER[x]; y = ORDER[y]; }
+      if (sortKey === 'slots') { x = (x || []).join(); y = (y || []).join(); }
+      if (x == null) return 1;
+      if (y == null) return -1;
+      return (x > y ? 1 : x < y ? -1 : 0) * sortDir;
+    });
+  }
+
+  function render() {
+    const list = filtered();
+    const count = s => rows.filter(r => r.status === s).length;
+    const people = new Set(rows.filter(r => r.phone).map(r => r.phone)).size;
+    document.getElementById('summary').innerHTML =
+      `<b>${rows.length - count('free')}</b> מתוך ${rows.length} בלוקים נתפסו · <b>${people}</b> מתנדבים (לפי טלפון) · ` +
+      `בסיבוב <b>${count('in_progress')}</b> · הושלמו <b>${count('done')}</b> · מוצגות ${list.length} שורות`;
+    document.getElementById('rows').innerHTML = list.map(r => `<tr>
+      <td><bdi>${esc(r.block_id)}</bdi></td><td>${esc(r.label)}</td><td>${r.apartments}</td>
+      <td><span class="pill"><span class="dot ${r.status}"></span>${STATUS[r.status]}</span></td>
+      <td class="names">${esc(r.names)}</td>
+      <td>${r.phone ? `<a class="ltr" href="tel:${esc(r.phone)}">${esc(phoneFmt(r.phone))}</a>` : ''}</td>
+      <td class="ltr">${(r.slots || []).map(s => SLOT[s] || s).join(', ')}</td>
+      <td class="muted">${time(r.claimed_at)}</td><td class="muted">${time(r.started_at)}</td><td class="muted">${time(r.done_at)}</td>
+    </tr>`).join('');
+  }
+
+  function downloadCsv() {
+    const head = ['בלוק', 'כתובת', 'דירות', 'מצב', 'מתנדבים', 'טלפון', 'משמרות', 'נתפס', 'התחיל', 'הסתיים'];
+    const cell = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const lines = [head.map(cell).join(',')].concat(filtered().map(r => [
+      r.block_id, r.label, r.apartments, STATUS[r.status], r.names, phoneFmt(r.phone),
+      (r.slots || []).map(s => SLOT[s] || s).join(' '), time(r.claimed_at), time(r.started_at), time(r.done_at),
+    ].map(cell).join(',')));
+    const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `govote2026-volunteers-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-')}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  document.getElementById('login').addEventListener('submit', e => {
+    e.preventDefault();
+    document.getElementById('login-err').hidden = true;
+    login(document.getElementById('pw').value);
+  });
+  document.getElementById('q').addEventListener('input', render);
+  document.getElementById('status').addEventListener('change', render);
+  document.getElementById('csv').addEventListener('click', downloadCsv);
+  document.getElementById('logout').addEventListener('click', () => { setPw(''); rows = []; showLogin(); });
+  document.querySelectorAll('th[data-k]').forEach(th => th.addEventListener('click', () => {
+    sortDir = sortKey === th.dataset.k ? -sortDir : 1;
+    sortKey = th.dataset.k;
+    render();
+  }));
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && getPw()) refresh(); });
+
+  getPw() ? login(getPw()) : showLogin();
+  </script>
+</body>
+</html>
