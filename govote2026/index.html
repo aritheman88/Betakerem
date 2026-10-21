@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>בית הכרם יוצאת להצביע</title>
+  <meta name="description" content="מפת המתנדבים של בית הכרם ליום הבחירות 27.10.2026 – בוחרים בלוק, מגיעים לכל בית.">
+  <meta property="og:title" content="בית הכרם יוצאת להצביע · 27.10">
+  <meta property="og:description" content="בוחרים בלוק בשכונה ודואגים שכל בית יקבל ביקור ביום הבחירות.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="style.css?v=2">
+</head>
+<body>
+  <header class="top">
+    <div class="title">
+      <h1>בית הכרם יוצאת להצביע</h1>
+      <p class="sub">בוחרים בלוק · דופקים בדלתות · אף בית לא נשאר מאחור</p>
+    </div>
+    <div class="countdown" id="countdown" aria-live="polite">
+      <div class="cd-label" id="cd-label">עד יום הבחירות · 27.10.2026</div>
+      <div class="cd-boxes" id="cd-boxes">
+        <div><span id="cd-d">--</span><small>ימים</small></div>
+        <div><span id="cd-h">--</span><small>שעות</small></div>
+        <div><span id="cd-m">--</span><small>דקות</small></div>
+        <div><span id="cd-s">--</span><small>שניות</small></div>
+      </div>
+      <div class="cd-live" id="cd-live" hidden></div>
+    </div>
+  </header>
+
+  <section class="stats" id="stats">
+    <div class="bar" aria-hidden="true">
+      <span class="seg done" id="bar-done"></span><span class="seg prog" id="bar-prog"></span><span class="seg claimed" id="bar-claimed"></span>
+    </div>
+    <div class="stats-text" id="stats-text">טוען…</div>
+  </section>
+
+  <a class="sim-link" href="simulate/">איך זה יעבוד ביום הבחירות? נסו את הסימולציה ←</a>
+
+  <div class="toolbar">
+    <input id="search" list="streets" type="search" placeholder="חיפוש רחוב…" autocomplete="off" aria-label="חיפוש רחוב">
+    <datalist id="streets"></datalist>
+    <button id="mine-btn" class="btn ghost" type="button" hidden>הבלוקים שלי</button>
+  </div>
+
+  <main class="map-wrap">
+    <div id="map"></div>
+    <div class="legend" id="legend">
+      <div><i class="free"></i>פנוי</div>
+      <div><i class="claimed"></i>נתפס</div>
+      <div class="live-only"><i class="prog"></i>בסיבוב</div>
+      <div class="live-only"><i class="done"></i>הושלם</div>
+    </div>
+    <div class="hint" id="hint">לחצו על בלוק כדי לראות כתובות ולתפוס אותו</div>
+  </main>
+
+  <aside class="sheet" id="sheet" hidden aria-live="polite">
+    <button class="close" id="sheet-close" type="button" aria-label="סגירה">×</button>
+    <div id="sheet-body"></div>
+  </aside>
+
+  <footer class="foot">
+    <a href="/">betakerem.org</a> · נתוני כתובות: עיריית ירושלים · מפה: © תורמי OpenStreetMap
+  </footer>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
+  <script src="config.js?v=2"></script>
+  <script src="app.js?v=2"></script>
+</body>
+</html>
