@@ -47,7 +47,7 @@ body {
 .title .sub { margin: 2px 0 0; color: var(--muted); font-size: .92rem; }
 .countdown { text-align: center; flex: 1 1 280px; max-width: 460px; }
 .cd-label { font-size: .9rem; color: var(--muted); margin-bottom: 4px; }
-.cd-boxes { display: flex; gap: 8px; justify-content: center; direction: rtl; }
+.cd-boxes { display: flex; gap: 8px; justify-content: center; direction: ltr; }
 .cd-boxes div {
   background: var(--card);
   border: 1px solid var(--line);
