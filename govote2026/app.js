@@ -233,7 +233,8 @@ async function loadGeo() {
     onEachFeature: (f, layer) => (state.buildings[f.properties.b] ||= []).push(layer),
   }).addTo(map);
   map.fitBounds(blockLayer.getBounds(), { padding: [8, 8] });
-  map.setMaxBounds(blockLayer.getBounds().pad(0.6));
+  state.home = blockLayer.getBounds();
+  map.setMaxBounds(state.home.pad(0.6));
   state.area = blockLayer.getBounds().pad(0.15);
   if (SIM) api.seed(blocks.features.map(f => f.properties.id));
 
@@ -666,7 +667,7 @@ const LocateControl = L.Control.extend({
 map.addControl(new LocateControl());
 
 // ---------- 2022 results layer ----------
-// one circle per polling building in the neighbourhood, coloured by the liberal share (blue) vs. coalition (red)
+// one circle per polling building in Jerusalem, coloured by the liberal share (blue) vs. coalition (red)
 const RESULTS = { layer: null, on: false };
 const pct = x => `${Math.round(100 * x)}%`;
 
@@ -683,28 +684,43 @@ function resultsPopup(site) {
       <td><bdi>${esc(b.kalpi)}</bdi></td><td>${b.valid}</td>
       <td style="color:${shareColor(1)}">${pct(b.liberal / b.valid)}</td><td style="color:${shareColor(0)}">${pct(b.coalition / b.valid)}</td></tr>
       ${b.excluded ? `<tr class="excluded"><td colspan="4">${esc(b.excluded)} – לא נכללה בצבע</td></tr>` : ''}`).join('');
-  return `<div class="res-pop"><b>${esc(site.label)}</b><div class="muted">${esc(site.address)} · ${site.valid.toLocaleString('he-IL')} קולות כשרים</div>
+  const where = site.beit_hakerem ? 'בית הכרם' : `${esc(site.neighbourhood)} (שיוך משוער)`;
+  return `<div class="res-pop"><b>${esc(site.label)}</b><div class="muted">${esc(site.address)} · ${where}<br>${site.valid.toLocaleString('he-IL')} קולות כשרים${site.approx ? ' · המיקום על המפה משוער' : ''}</div>
     <div class="res-big"><span style="color:${shareColor(1)}">ליברלים ${pct(site.liberal_share)}</span> · <span style="color:${shareColor(0)}">קואליציה ${pct(site.coalition_share)}</span></div>
     <table><tr><th>קלפי</th><th>כשרים</th><th>ליברלים</th><th>קואליציה</th></tr>${rows}</table></div>`;
 }
 
 async function loadResults() {
   const data = await fetch(`${DATA}results2022.json?v=${GEO_VERSION}`).then(r => r.json());
-  RESULTS.layer = L.layerGroup(data.sites.map(site => {
-    const d = Math.round(2 * (8 + Math.sqrt(site.valid) / 3.5));
+  RESULTS.layer = L.layerGroup(data.sites.filter(site => site.valid).map(site => {
+    const d = Math.round(2 * (6 + Math.sqrt(site.valid) / 5));
+    const label = d >= 26 ? pct(site.liberal_share) : '';
     const icon = L.divIcon({
-      className: 'res-marker', iconSize: [d, d],
-      html: `<div class="res-dot" style="background:${shareColor(site.liberal_share)}">${pct(site.liberal_share)}</div>`,
+      className: `res-marker${site.beit_hakerem ? ' home' : ''}`, iconSize: [d, d],
+      html: `<div class="res-dot" style="background:${shareColor(site.liberal_share)};font-size:${Math.max(10, d / 3.4)}px">${label}</div>`,
     });
-    return L.marker([site.lat, site.lon], { icon, title: site.label, zIndexOffset: 1000 })
+    return L.marker([site.lat, site.lon], { icon, title: `${site.label} · ליברלים ${pct(site.liberal_share)}`, zIndexOffset: 1000 })
       .bindPopup(resultsPopup(site), { maxWidth: 300 });
   }));
+  RESULTS.bounds = L.latLngBounds(data.sites.map(site => [site.lat, site.lon]));
 }
 
 async function toggleResults() {
   if (!RESULTS.layer) await loadResults();
   RESULTS.on = !RESULTS.on;
-  if (RESULTS.on) { RESULTS.layer.addTo(map); closeSheet(); } else RESULTS.layer.remove();
+  // the results cover all of Jerusalem: let the map leave the neighbourhood while they are shown
+  if (RESULTS.on) {
+    RESULTS.layer.addTo(map);
+    closeSheet();
+    map.setMaxBounds(null);
+    map.setMinZoom(11);
+    map.fitBounds(RESULTS.bounds, { padding: [10, 10] });
+  } else {
+    RESULTS.layer.remove();
+    map.setMinZoom(13);
+    map.fitBounds(state.home, { padding: [8, 8] });
+    map.setMaxBounds(state.home.pad(0.6));
+  }
   document.body.classList.toggle('results-on', RESULTS.on);
   document.getElementById('results-btn').setAttribute('aria-pressed', RESULTS.on);
 }
