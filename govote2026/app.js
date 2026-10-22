@@ -669,6 +669,8 @@ map.addControl(new LocateControl());
 document.addEventListener('visibilitychange', () => { if (!document.hidden && !SIM) loadClaims(); });
 
 (async function init() {
+  await window.SITE_GATE;  // site password (gate.js); the map was created hidden, so let it re-measure
+  map.invalidateSize();
   tickCountdown();
   setInterval(tickCountdown, 1000);
   await loadGeo();

@@ -2,6 +2,7 @@
 <html lang="he" dir="rtl">
 <head>
   <meta charset="utf-8">
+  <script src="/gate.js?v=1"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex, nofollow">
   <title>מנהלים · בית הכרם יוצאת להצביע</title>
@@ -241,7 +242,7 @@
   }));
   document.addEventListener('visibilitychange', () => { if (!document.hidden && getPw()) refresh(); });
 
-  getPw() ? login(getPw()) : showLogin();
+  window.SITE_GATE.then(() => (getPw() ? login(getPw()) : showLogin()));
   </script>
 </body>
 </html>
