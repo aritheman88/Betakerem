@@ -131,8 +131,73 @@ begin
     return jsonb_build_object('ok', true);
 end $$;
 
+-- free a block whatever its state (undo vandalism, or a volunteer who dropped out)
+create or replace function public.moderator_release(p_password text, p_block_id text)
+returns jsonb
+language plpgsql security definer set search_path = '' as $$
+declare
+    v_err text := public._moderator_error(p_password);
+begin
+    if v_err is not null then
+        return jsonb_build_object('ok', false, 'error', v_err);
+    end if;
+    delete from public.claims where block_id = p_block_id;
+    if not found then
+        return jsonb_build_object('ok', false, 'error', 'not_claimed');
+    end if;
+    insert into public.claim_log (block_id, action) values (p_block_id, 'moderator_release');
+    return jsonb_build_object('ok', true);
+end $$;
+
+-- fix a claim: names, phone, shifts and status. Setting it back to 'claimed' clears its marked addresses.
+create or replace function public.moderator_update_claim(p_password text, p_block_id text, p_names text, p_phone text,
+                                                         p_slots text[], p_status text)
+returns jsonb
+language plpgsql security definer set search_path = '' as $$
+declare
+    v_err   text := public._moderator_error(p_password);
+    v_names text := btrim(regexp_replace(coalesce(p_names, ''), '\s+', ' ', 'g'));
+    v_phone text := public._norm_phone(p_phone);
+begin
+    if v_err is not null then
+        return jsonb_build_object('ok', false, 'error', v_err);
+    end if;
+    if char_length(v_names) < 2 or char_length(v_names) > 80 then
+        return jsonb_build_object('ok', false, 'error', 'bad_names');
+    end if;
+    if v_phone !~ '^0(5\d{8}|[2-9]\d{7})$' then
+        return jsonb_build_object('ok', false, 'error', 'bad_phone');
+    end if;
+    if p_slots is null or cardinality(p_slots) = 0
+       or not (p_slots <@ array['10-12', '12-14', '14-16', '16-18']) then
+        return jsonb_build_object('ok', false, 'error', 'bad_slots');
+    end if;
+    if p_status is null or p_status not in ('claimed', 'in_progress', 'done') then
+        return jsonb_build_object('ok', false, 'error', 'bad_status');
+    end if;
+    update public.claims set
+        names = v_names,
+        slots = (select array_agg(s order by s) from unnest(p_slots) s),
+        started_at = case when p_status = 'claimed' then null else coalesce(started_at, now()) end,
+        done_at = case when p_status = 'done' then coalesce(done_at, now()) end,
+        status = p_status
+    where block_id = p_block_id;
+    if not found then
+        return jsonb_build_object('ok', false, 'error', 'not_claimed');
+    end if;
+    update public.claim_secrets set phone = v_phone where block_id = p_block_id;
+    if p_status = 'claimed' then
+        delete from public.house_done where block_id = p_block_id;
+    end if;
+    insert into public.claim_log (block_id, action, names, phone) values (p_block_id, 'moderator_edit', v_names, v_phone);
+    return jsonb_build_object('ok', true);
+end $$;
+
 revoke all on function public._moderator_error(text), public._join_request_rows(text) from public, anon, authenticated;
 revoke all on function public.moderator_claims(text), public.moderator_handle_request(text, bigint, boolean),
-    public.moderator_new_requests(text), public.moderator_unnotify_requests(text, bigint[]) from public;
+    public.moderator_new_requests(text), public.moderator_unnotify_requests(text, bigint[]),
+    public.moderator_release(text, text), public.moderator_update_claim(text, text, text, text, text[], text) from public;
 grant execute on function public.moderator_claims(text), public.moderator_handle_request(text, bigint, boolean),
-    public.moderator_new_requests(text), public.moderator_unnotify_requests(text, bigint[]) to anon, authenticated;
+    public.moderator_new_requests(text), public.moderator_unnotify_requests(text, bigint[]),
+    public.moderator_release(text, text), public.moderator_update_claim(text, text, text, text, text[], text)
+    to anon, authenticated;

@@ -59,6 +59,13 @@ create table if not exists public.join_requests (
     handled_at  timestamptz   -- set by a moderator from the moderators page
 );
 
+-- private: the API key derived from the site password (see gate.js). Not in the repo; set it with
+--   insert into public.site_key (id, key) values (1, '<key>') on conflict (id) do update set key = excluded.key;
+create table if not exists public.site_key (
+    id  int primary key default 1 check (id = 1),
+    key text not null
+);
+
 create table if not exists public.claim_log (
     id       bigserial primary key,
     block_id text not null,
@@ -75,6 +82,7 @@ alter table public.claim_secrets enable row level security;
 alter table public.claim_log     enable row level security;
 alter table public.house_done    enable row level security;
 alter table public.join_requests enable row level security;
+alter table public.site_key      enable row level security;
 
 drop policy if exists "public read" on public.settings;
 drop policy if exists "public read" on public.blocks;
@@ -87,7 +95,7 @@ create policy "public read" on public.house_done for select to anon, authenticat
 -- claim_secrets, claim_log and join_requests have no policies, so anon/authenticated can't touch them.
 
 revoke insert, update, delete, truncate on public.settings, public.blocks, public.claims, public.house_done from anon, authenticated;
-revoke all on public.claim_secrets, public.claim_log, public.join_requests from anon, authenticated;
+revoke all on public.claim_secrets, public.claim_log, public.join_requests, public.site_key from anon, authenticated;
 revoke all on sequence public.claim_log_id_seq, public.join_requests_id_seq from anon, authenticated;
 
 -- live updates for the map
@@ -127,6 +135,13 @@ language sql stable security definer set search_path = '' as $$
     )
 $$;
 
+-- true when the request carries the site key (header x-site-key, sent by the map after the password gate)
+create or replace function public._site_key_ok() returns boolean
+language sql stable security definer set search_path = '' as $$
+    select exists (select 1 from public.site_key
+                   where id = 1 and key = current_setting('request.headers', true)::json ->> 'x-site-key')
+$$;
+
 create or replace function public._is_live() returns boolean
 language sql stable set search_path = '' as $$
     select now() >= live_from and now() < live_until from public.settings where id = 1
@@ -142,6 +157,7 @@ declare
     v_phone text := public._norm_phone(p_phone);
     v_token text;
 begin
+    if not public._site_key_ok() then raise exception 'bad_site_key'; end if;
     if not exists (select 1 from public.blocks where id = p_block_id) then
         raise exception 'no_such_block';
     end if;
@@ -180,6 +196,7 @@ create or replace function public.start_round(p_block_id text, p_token text defa
 returns void
 language plpgsql security definer set search_path = '' as $$
 begin
+    if not public._site_key_ok() then raise exception 'bad_site_key'; end if;
     if not public._is_live() then raise exception 'not_live'; end if;
     if not public._can_edit(p_block_id, p_token, p_phone) then raise exception 'not_allowed'; end if;
     update public.claims set status = 'in_progress', started_at = now()
@@ -192,6 +209,7 @@ create or replace function public.mark_done(p_block_id text, p_token text defaul
 returns void
 language plpgsql security definer set search_path = '' as $$
 begin
+    if not public._site_key_ok() then raise exception 'bad_site_key'; end if;
     if not public._is_live() then raise exception 'not_live'; end if;
     if not public._can_edit(p_block_id, p_token, p_phone) then raise exception 'not_allowed'; end if;
     update public.claims set status = 'done', done_at = now(), started_at = coalesce(started_at, now())
@@ -210,6 +228,7 @@ declare
     v_status text;
     v_entrances int;
 begin
+    if not public._site_key_ok() then raise exception 'bad_site_key'; end if;
     if not public._is_live() then raise exception 'not_live'; end if;
     if not public._can_edit(p_block_id, p_token, p_phone) then raise exception 'not_allowed'; end if;
     select entrances into v_entrances from public.blocks where id = p_block_id;
@@ -248,6 +267,7 @@ create or replace function public.reopen_round(p_block_id text, p_token text def
 returns void
 language plpgsql security definer set search_path = '' as $$
 begin
+    if not public._site_key_ok() then raise exception 'bad_site_key'; end if;
     if not public._can_edit(p_block_id, p_token, p_phone) then raise exception 'not_allowed'; end if;
     update public.claims set status = 'in_progress', done_at = null
     where block_id = p_block_id and status = 'done';
@@ -259,6 +279,7 @@ create or replace function public.release_block(p_block_id text, p_token text de
 returns void
 language plpgsql security definer set search_path = '' as $$
 begin
+    if not public._site_key_ok() then raise exception 'bad_site_key'; end if;
     if not public._can_edit(p_block_id, p_token, p_phone) then raise exception 'not_allowed'; end if;
     delete from public.claims where block_id = p_block_id and status <> 'done';
     if not found then raise exception 'bad_status'; end if;
@@ -274,6 +295,7 @@ declare
     v_phone text := public._norm_phone(p_phone);
     v_note  text := nullif(btrim(coalesce(p_note, '')), '');
 begin
+    if not public._site_key_ok() then raise exception 'bad_site_key'; end if;
     if not exists (select 1 from public.claims where block_id = p_block_id) then
         raise exception 'not_claimed';
     end if;
@@ -306,9 +328,11 @@ returns setof text
 language sql stable security definer set search_path = '' as $$
     select block_id from public.claim_secrets
     where phone = public._norm_phone(p_phone) and public._norm_phone(p_phone) <> ''
+      and public._site_key_ok()
 $$;
 
-revoke all on function public._norm_phone(text), public._hash(text), public._can_edit(text, text, text), public._is_live()
+revoke all on function public._norm_phone(text), public._hash(text), public._can_edit(text, text, text), public._is_live(),
+    public._site_key_ok()
     from public, anon, authenticated;
 revoke all on function public.claim_block(text, text, text, text[]), public.start_round(text, text, text),
     public.mark_done(text, text, text), public.mark_house(text, text, boolean, text, text),

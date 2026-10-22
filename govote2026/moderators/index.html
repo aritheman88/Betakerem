@@ -2,7 +2,7 @@
 <html lang="he" dir="rtl">
 <head>
   <meta charset="utf-8">
-  <script src="/gate.js?v=1"></script>
+  <script src="/gate.js?v=2"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex, nofollow">
   <title>מנהלים · בית הכרם יוצאת להצביע</title>
@@ -31,6 +31,15 @@
     .badge { background: var(--free); color: #fff; border-radius: 10px; padding: 0 8px; font-size: .85rem; }
     tr.handled td { color: var(--muted); }
     td .btn.ghost { padding: 4px 10px; font-size: .85rem; }
+    td .btn.ghost.warn { color: var(--free); border-color: var(--free); }
+    td.actions { display: flex; gap: 6px; }
+    tr.editing td { background: color-mix(in srgb, var(--brand) 8%, var(--card)); }
+    tr.editing input[type=text], tr.editing input[type=tel], tr.editing select { font: inherit; padding: 4px 6px; border-radius: 8px;
+      border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+    tr.editing input[type=text] { width: 150px; }
+    tr.editing input[type=tel] { width: 120px; direction: ltr; }
+    tr.editing .slot-pick { display: flex; gap: 6px; direction: ltr; }
+    td .row-err { color: var(--free); font-size: .82rem; white-space: normal; }
   </style>
 </head>
 <body>
@@ -80,6 +89,7 @@
             <th data-k="block_id">בלוק</th><th data-k="label">כתובת</th><th data-k="apartments">דירות</th>
             <th data-k="status">מצב</th><th data-k="houses_done">כתובות שסומנו</th><th data-k="names">מתנדבים</th><th data-k="phone">טלפון</th>
             <th data-k="slots">משמרות</th><th data-k="claimed_at">נתפס</th><th data-k="started_at">התחיל</th><th data-k="done_at">הסתיים</th>
+            <th></th>
           </tr></thead>
           <tbody id="rows"></tbody>
         </table>
@@ -98,6 +108,7 @@
   const STATUS = { free: 'פנוי', claimed: 'נתפס', in_progress: 'בסיבוב', done: 'הושלם' };
   const ORDER = { free: 0, claimed: 1, in_progress: 2, done: 3 };
   let rows = [], requests = [], sortKey = 'block_id', sortDir = 1, timer = null;
+  let editing = null;  // block id being edited; auto-refresh doesn't redraw the table meanwhile
 
   const pwKey = 'gv26_mod_pw';
   const getPw = () => { try { return sessionStorage.getItem(pwKey) || ''; } catch { return ''; } };
@@ -135,7 +146,7 @@
 
   async function refresh() {
     const res = await load(getPw());
-    if (res.ok) { rows = res.rows; requests = res.requests || []; render(); }
+    if (res.ok) { rows = res.rows; requests = res.requests || []; if (!editing) render(); }
   }
 
   function showLogin() {
@@ -198,7 +209,7 @@
     document.getElementById('summary').innerHTML =
       `<b>${rows.length - count('free')}</b> מתוך ${rows.length} בלוקים נתפסו · <b>${people}</b> מתנדבים (לפי טלפון) · ` +
       `בסיבוב <b>${count('in_progress')}</b> · הושלמו <b>${count('done')}</b> · מוצגות ${list.length} שורות`;
-    document.getElementById('rows').innerHTML = list.map(r => `<tr>
+    document.getElementById('rows').innerHTML = list.map(r => r.block_id === editing ? editRow(r) : `<tr>
       <td><bdi>${esc(r.block_id)}</bdi></td><td>${esc(r.label)}</td><td>${r.apartments}</td>
       <td><span class="pill"><span class="dot ${r.status}"></span>${STATUS[r.status]}</span></td>
       <td class="muted">${r.status === 'free' ? '' : `${r.status === 'done' ? r.entrances : r.houses_done}/${r.entrances}`}</td>
@@ -206,7 +217,65 @@
       <td>${telLink(r.phone)}</td>
       <td class="ltr">${(r.slots || []).map(s => SLOT[s] || s).join(', ')}</td>
       <td class="muted">${time(r.claimed_at)}</td><td class="muted">${time(r.started_at)}</td><td class="muted">${time(r.done_at)}</td>
+      <td>${r.status === 'free' ? '' : `<span class="actions"><button class="btn ghost" type="button" data-edit="${esc(r.block_id)}">עריכה</button>
+        <button class="btn ghost warn" type="button" data-release="${esc(r.block_id)}">שחרור</button></span>`}</td>
     </tr>`).join('');
+    wireRows();
+  }
+
+  function editRow(r) {
+    const slots = Object.keys(SLOT).map(s => `<label><input type="checkbox" value="${s}" ${(r.slots || []).includes(s) ? 'checked' : ''}>${SLOT[s]}</label>`).join('');
+    const status = ['claimed', 'in_progress', 'done'].map(s => `<option value="${s}" ${r.status === s ? 'selected' : ''}>${STATUS[s]}</option>`).join('');
+    return `<tr class="editing" data-row="${esc(r.block_id)}">
+      <td><bdi>${esc(r.block_id)}</bdi></td><td>${esc(r.label)}</td><td>${r.apartments}</td>
+      <td><select data-f="status">${status}</select></td>
+      <td class="muted">${r.houses_done}/${r.entrances}</td>
+      <td><input type="text" data-f="names" value="${esc(r.names)}" maxlength="80"></td>
+      <td><input type="tel" data-f="phone" value="${esc(phoneFmt(r.phone))}"></td>
+      <td><span class="slot-pick">${slots}</span></td>
+      <td colspan="3" class="muted">החזרה ל"נתפס" מוחקת את הכתובות שסומנו.<div class="row-err" hidden></div></td>
+      <td><span class="actions"><button class="btn ghost" type="button" data-save="${esc(r.block_id)}">שמירה</button>
+        <button class="btn ghost" type="button" data-cancel>ביטול</button></span></td>
+    </tr>`;
+  }
+
+  const MOD_ERRORS = { bad_names: 'שם לא תקין (2–80 תווים)', bad_phone: 'טלפון לא תקין', bad_slots: 'בחרו לפחות משמרת אחת',
+    not_claimed: 'הבלוק כבר פנוי', bad_password: 'הסיסמה כבר לא תקפה – התחברו מחדש', locked: 'נחסם זמנית, נסו בעוד רבע שעה' };
+
+  function wireRows() {
+    document.querySelectorAll('button[data-edit]').forEach(btn => btn.onclick = () => { editing = btn.dataset.edit; render(); });
+    document.querySelectorAll('button[data-cancel]').forEach(btn => btn.onclick = () => { editing = null; render(); });
+    // releasing needs a second click within 4 seconds
+    document.querySelectorAll('button[data-release]').forEach(btn => btn.onclick = async () => {
+      if (!btn.dataset.armed) {
+        btn.dataset.armed = '1';
+        btn.textContent = 'בטוח? לחצו שוב';
+        setTimeout(() => { if (btn.isConnected) { delete btn.dataset.armed; btn.textContent = 'שחרור'; } }, 4000);
+        return;
+      }
+      btn.disabled = true;
+      const { data, error } = await sb.rpc('moderator_release', { p_password: getPw(), p_block_id: btn.dataset.release });
+      if (error || !data.ok) { btn.disabled = false; btn.textContent = error ? 'שגיאה, נסו שוב' : (MOD_ERRORS[data.error] || data.error); return; }
+      refresh();
+    });
+    document.querySelectorAll('button[data-save]').forEach(btn => btn.onclick = async () => {
+      const tr = btn.closest('tr');
+      const field = f => tr.querySelector(`[data-f="${f}"]`).value;
+      const errBox = tr.querySelector('.row-err');
+      btn.disabled = true;
+      const { data, error } = await sb.rpc('moderator_update_claim', {
+        p_password: getPw(), p_block_id: btn.dataset.save, p_names: field('names'), p_phone: field('phone'),
+        p_slots: [...tr.querySelectorAll('.slot-pick input:checked')].map(i => i.value), p_status: field('status'),
+      });
+      if (error || !data.ok) {
+        btn.disabled = false;
+        errBox.hidden = false;
+        errBox.textContent = error ? 'בעיית חיבור, נסו שוב' : (MOD_ERRORS[data.error] || data.error);
+        return;
+      }
+      editing = null;
+      refresh();
+    });
   }
 
   function downloadCsv() {

@@ -1,16 +1,22 @@
 // Site-wide password gate. Loaded synchronously in <head> of every page.
-// This only keeps casual visitors out: the data and the Supabase API stay reachable for anyone who
-// reads the source. Only the SHA-256 of the (lower-cased) password is here; to change it, run
-//   python -c "import hashlib; print(hashlib.sha256('newpassword'.lower().encode()).hexdigest())"
+// Only the SHA-256 of the (lower-cased) password is here. The page also derives an API key from the password,
+// window.SITE_KEY = sha256('betakerem-api:' + password), which the map sends with every change it makes; the
+// database refuses changes without it (supabase/schema.sql, table site_key), so the source alone isn't enough.
+// To change the password, update HASH below and the key in Supabase:
+//   python -c "import hashlib; p='newpassword'.lower(); print(hashlib.sha256(p.encode()).hexdigest()); print(hashlib.sha256(('betakerem-api:'+p).encode()).hexdigest())"
+//   SQL editor: update public.site_key set key = '<second line>' where id = 1;
 // Pages that need to wait for the gate before running (asking for location, logging in) await window.SITE_GATE.
 (function () {
   'use strict';
   const HASH = 'bbf24ae413d6dc83c15d3130cba9ce32be3203da8429bf6a765c39db697e3e17';
   const KEY = 'betakerem_gate';
-  const stored = () => { try { return localStorage.getItem(KEY); } catch { return null; } };
+  const API_KEY = 'betakerem_api_key';
+  const stored = k => { try { return localStorage.getItem(k); } catch { return null; } };
   let open;
   window.SITE_GATE = new Promise(resolve => { open = resolve; });
-  if (stored() === HASH) { open(); return; }
+  // forget a key the server no longer accepts (the password was changed); the next visit asks again
+  window.SITE_GATE_RESET = () => { try { localStorage.removeItem(KEY); localStorage.removeItem(API_KEY); } catch { /* ignore */ } };
+  if (stored(KEY) === HASH && stored(API_KEY)) { window.SITE_KEY = stored(API_KEY); open(); return; }
 
   const html = document.documentElement;
   html.classList.add('site-gated');
@@ -59,12 +65,14 @@
     input.focus();
     form.addEventListener('submit', async e => {
       e.preventDefault();
-      if (await sha256(input.value.trim().toLowerCase()) !== HASH) {
+      const password = input.value.trim().toLowerCase();
+      if (await sha256(password) !== HASH) {
         gate.querySelector('.err').textContent = 'סיסמה שגויה';
         input.select();
         return;
       }
-      try { localStorage.setItem(KEY, HASH); } catch { /* private mode: asked again next visit */ }
+      window.SITE_KEY = await sha256('betakerem-api:' + password);
+      try { localStorage.setItem(KEY, HASH); localStorage.setItem(API_KEY, window.SITE_KEY); } catch { /* private mode: asked again next visit */ }
       gate.remove();
       html.classList.remove('site-gated');
       open();

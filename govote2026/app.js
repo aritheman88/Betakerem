@@ -22,6 +22,7 @@ const ERRORS = {
   own_block: 'זה כבר הבלוק שלכם.',
   already_requested: 'כבר שלחתם בקשה להצטרף לבלוק הזה. המארגנים יחזרו אליכם.',
   bad_note: 'ההערה ארוכה מדי (עד 300 תווים).',
+  bad_site_key: 'הסיסמה לאתר השתנתה. רעננו את הדף והקלידו את הסיסמה החדשה.',
 };
 
 const SIM = Boolean(CFG.simulate);  // election-day demo: fake data, nothing is saved
@@ -31,7 +32,13 @@ const params = new URLSearchParams(location.search);
 
 // ---------- backend: Supabase, or an in-memory stand-in for the simulation ----------
 function supabaseApi() {
-  const sb = supabase.createClient(CFG.supabaseUrl, CFG.supabaseKey);
+  // every request carries the key derived from the site password (gate.js); the database refuses changes without it
+  const siteFetch = (url, opts = {}) => {
+    const headers = new Headers(opts.headers);
+    if (window.SITE_KEY) headers.set('x-site-key', window.SITE_KEY);
+    return fetch(url, { ...opts, headers });
+  };
+  const sb = supabase.createClient(CFG.supabaseUrl, CFG.supabaseKey, { global: { fetch: siteFetch } });
   return {
     claims: () => sb.from('claims').select('*'),
     houses: () => sb.from('house_done').select('house_id, block_id'),
@@ -490,6 +497,7 @@ function wireSheet(id) {
 function errorText(error) {
   const msg = (error && error.message) || '';
   const key = Object.keys(ERRORS).find(k => msg.includes(k));
+  if (key === 'bad_site_key' && window.SITE_GATE_RESET) window.SITE_GATE_RESET();
   return key ? ERRORS[key] : 'משהו השתבש. בדקו את החיבור ונסו שוב.';
 }
 
