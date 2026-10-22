@@ -26,7 +26,7 @@ const ERRORS = {
 
 const SIM = Boolean(CFG.simulate);  // election-day demo: fake data, nothing is saved
 const DATA = CFG.dataBase || '';
-const GEO_VERSION = 2;  // bump when tools/build_blocks.py output changes, so browsers don't use stale blocks
+const GEO_VERSION = 3;  // bump when tools/build_blocks.py or build_results.py output changes, so browsers don't use stale blocks
 const params = new URLSearchParams(location.search);
 
 // ---------- backend: Supabase, or an in-memory stand-in for the simulation ----------
@@ -667,39 +667,46 @@ const LocateControl = L.Control.extend({
 map.addControl(new LocateControl());
 
 // ---------- 2022 results layer ----------
-// one circle per polling building in Jerusalem, coloured by the liberal share (blue) vs. coalition (red)
+// one circle per polling building in Jerusalem, coloured by the liberal + Arab bloc share vs. the coalition (red);
+// the non-coalition side is blue where the liberal bloc leads and green where the Arab bloc does
 const RESULTS = { layer: null, on: false };
 const pct = x => `${Math.round(100 * x)}%`;
+const BLOC_RGB = { coalition: [185, 28, 28], liberal: [29, 78, 216], arab: [21, 128, 61] };
 
-function shareColor(liberal) {
-  // red at <=25% liberal, light grey at 50%, blue at >=75%
-  const t = Math.max(-1, Math.min(1, (liberal - 0.5) / 0.25));
+function shareColor(opposition, arabLeads = false) {
+  // red at <=25% liberal + Arab, light grey at 50%, blue (or green) at >=75%
+  const t = Math.max(-1, Math.min(1, (opposition - 0.5) / 0.25));
   const mix = (a, b, k) => a.map((v, i) => Math.round(v + (b[i] - v) * k));
-  const rgb = t < 0 ? mix([229, 231, 235], [185, 28, 28], -t) : mix([229, 231, 235], [29, 78, 216], t);
+  const rgb = t < 0 ? mix([229, 231, 235], BLOC_RGB.coalition, -t)
+    : mix([229, 231, 235], arabLeads ? BLOC_RGB.arab : BLOC_RGB.liberal, t);
   return `rgb(${rgb.join(',')})`;
 }
+const blocColor = bloc => `rgb(${BLOC_RGB[bloc].join(',')})`;
+const siteColor = site => shareColor(site.liberal_share + site.arab_share, site.arab_share > site.liberal_share);
 
 function resultsPopup(site) {
   const rows = site.boxes.map(b => `<tr class="${b.excluded ? 'excluded' : ''}">
       <td><bdi>${esc(b.kalpi)}</bdi></td><td>${b.valid}</td>
-      <td style="color:${shareColor(1)}">${pct(b.liberal / b.valid)}</td><td style="color:${shareColor(0)}">${pct(b.coalition / b.valid)}</td></tr>
-      ${b.excluded ? `<tr class="excluded"><td colspan="4">${esc(b.excluded)} – לא נכללה בצבע</td></tr>` : ''}`).join('');
+      <td style="color:${blocColor('liberal')}">${pct(b.liberal / b.valid)}</td><td style="color:${blocColor('arab')}">${pct(b.arab / b.valid)}</td>
+      <td style="color:${blocColor('coalition')}">${pct(b.coalition / b.valid)}</td></tr>
+      ${b.excluded ? `<tr class="excluded"><td colspan="5">${esc(b.excluded)} – לא נכללה בצבע</td></tr>` : ''}`).join('');
   const where = site.beit_hakerem ? 'בית הכרם' : `${esc(site.neighbourhood)} (שיוך משוער)`;
   return `<div class="res-pop"><b>${esc(site.label)}</b><div class="muted">${esc(site.address)} · ${where}<br>${site.valid.toLocaleString('he-IL')} קולות כשרים${site.approx ? ' · המיקום על המפה משוער' : ''}</div>
-    <div class="res-big"><span style="color:${shareColor(1)}">ליברלים ${pct(site.liberal_share)}</span> · <span style="color:${shareColor(0)}">קואליציה ${pct(site.coalition_share)}</span></div>
-    <table><tr><th>קלפי</th><th>כשרים</th><th>ליברלים</th><th>קואליציה</th></tr>${rows}</table></div>`;
+    <div class="res-big"><span style="color:${blocColor('liberal')}">ליברלים ${pct(site.liberal_share)}</span> · <span style="color:${blocColor('arab')}">גוש ערבי ${pct(site.arab_share)}</span> · <span style="color:${blocColor('coalition')}">קואליציה ${pct(site.coalition_share)}</span></div>
+    <table><tr><th>קלפי</th><th>כשרים</th><th>ליברלים</th><th>ערבי</th><th>קואליציה</th></tr>${rows}</table></div>`;
 }
 
 async function loadResults() {
   const data = await fetch(`${DATA}results2022.json?v=${GEO_VERSION}`).then(r => r.json());
   RESULTS.layer = L.layerGroup(data.sites.filter(site => site.valid).map(site => {
     const d = Math.round(2 * (6 + Math.sqrt(site.valid) / 5));
-    const label = d >= 26 ? pct(site.liberal_share) : '';
+    const opposition = site.liberal_share + site.arab_share;
+    const label = d >= 26 ? pct(opposition) : '';
     const icon = L.divIcon({
       className: `res-marker${site.beit_hakerem ? ' home' : ''}`, iconSize: [d, d],
-      html: `<div class="res-dot" style="background:${shareColor(site.liberal_share)};font-size:${Math.max(10, d / 3.4)}px">${label}</div>`,
+      html: `<div class="res-dot" style="background:${siteColor(site)};font-size:${Math.max(10, d / 3.4)}px">${label}</div>`,
     });
-    return L.marker([site.lat, site.lon], { icon, title: `${site.label} · ליברלים ${pct(site.liberal_share)}`, zIndexOffset: 1000 })
+    return L.marker([site.lat, site.lon], { icon, title: `${site.label} · ליברלים + גוש ערבי ${pct(opposition)}`, zIndexOffset: 1000 })
       .bindPopup(resultsPopup(site), { maxWidth: 300 });
   }));
   RESULTS.bounds = L.latLngBounds(data.sites.map(site => [site.lat, site.lon]));

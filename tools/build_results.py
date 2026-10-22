@@ -24,8 +24,8 @@ GEOCODES = REPO / 'tools' / 'data' / 'k25_jerusalem_geocodes.json'
 OUT = REPO / 'govote2026' / 'results2022.json'
 
 COALITION = ['מחל', 'שס', 'ג', 'ט']                         # Likud, Shas, UTJ, Religious Zionism
-LIBERAL = ['פה', 'כן', 'אמת', 'מרצ', 'ל', 'ום', 'עם']     # Yesh Atid, National Unity, Labor, Meretz,
-                                                           # Yisrael Beiteinu, Hadash-Ta'al, Ra'am
+LIBERAL = ['פה', 'כן', 'אמת', 'מרצ', 'ל']                # Yesh Atid, National Unity, Labor, Meretz, Yisrael Beiteinu
+ARAB = ['ום', 'עם']                                        # Hadash-Ta'al, Ra'am
 
 # polling-station address (as in the results file) -> (lat, lon)
 POSITIONS = {
@@ -92,6 +92,7 @@ def main():
             boxes.append({
                 'kalpi': f'{kalpi:g}', 'venue': r['מקום קלפי'], 'valid': int(r['כשרים']), 'registered': int(r['בזב']),
                 'coalition': int(r[COALITION].sum()), 'liberal': int(r[LIBERAL].sum()),
+                'arab': int(r[ARAB].sum()),
                 'excluded': EXCLUDED.get(int(kalpi)) if addr in BEIT_HAKEREM else None,
             })
         kept = [b for b in boxes if not b['excluded']]
@@ -102,6 +103,7 @@ def main():
             'beit_hakerem': addr in BEIT_HAKEREM, 'approx': addr in APPROXIMATE, 'lat': round(pos[0], 5), 'lon': round(pos[1], 5), 'boxes': boxes,
             'valid': valid, 'registered': sum(b['registered'] for b in kept),
             'liberal_share': round(sum(b['liberal'] for b in kept) / valid, 4) if valid else None,
+            'arab_share': round(sum(b['arab'] for b in kept) / valid, 4) if valid else None,
             'coalition_share': round(sum(b['coalition'] for b in kept) / valid, 4) if valid else None,
         })
     if missing:
@@ -109,13 +111,16 @@ def main():
     json.dump({'election': 'הבחירות לכנסת ה-25 (1.11.2022)', 'sites': sites},
               open(OUT, 'w', encoding='utf-8'), ensure_ascii=False, separators=(',', ':'))
 
-    def share(ss):
+    def share(ss, bloc):
         kept = [b for s in ss for b in s['boxes'] if not b['excluded']]
-        return sum(b['liberal'] for b in kept) / sum(b['valid'] for b in kept)
+        return sum(b[bloc] for b in kept) / sum(b['valid'] for b in kept)
     bhk = [s for s in sites if s['beit_hakerem']]
     print(f'{len(sites)} buildings, {sum(len(s["boxes"]) for s in sites)} ballot boxes, '
           f'{sum(s["valid"] for s in sites)} valid votes')
-    print(f'liberal share: Jerusalem {share(sites):.1%}, בית הכרם {share(bhk):.1%}')
+    for bloc in ('liberal', 'arab', 'coalition'):
+        print(f'{bloc} share: Jerusalem {share(sites, bloc):.1%}, בית הכרם {share(bhk, bloc):.1%}')
+    print(f'{sum(1 for s in sites if s["valid"] and s["arab_share"] > s["liberal_share"])} buildings where the Arab bloc '
+          f'outpolls the liberal one')
 
 
 if __name__ == '__main__':
