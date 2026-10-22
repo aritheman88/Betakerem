@@ -90,7 +90,7 @@ def main():
         for _, r in rows.iterrows():
             kalpi = float(r['קלפי'])
             boxes.append({
-                'kalpi': f'{kalpi:g}', 'venue': r['מקום קלפי'], 'valid': int(r['כשרים']), 'registered': int(r['בזב']),
+                'kalpi': f'{kalpi:g}', 'venue': r['מקום קלפי'], 'valid': int(r['כשרים']), 'registered': int(r['בזב']), 'voted': int(r['מצביעים']),
                 'coalition': int(r[COALITION].sum()), 'liberal': int(r[LIBERAL].sum()),
                 'arab': int(r[ARAB].sum()),
                 'excluded': EXCLUDED.get(int(kalpi)) if addr in BEIT_HAKEREM else None,
@@ -102,6 +102,7 @@ def main():
             'label': ' / '.join(venues), 'address': addr.replace('שד ', "שד' "), 'neighbourhood': rows['שכונה'].iloc[0],
             'beit_hakerem': addr in BEIT_HAKEREM, 'approx': addr in APPROXIMATE, 'lat': round(pos[0], 5), 'lon': round(pos[1], 5), 'boxes': boxes,
             'valid': valid, 'registered': sum(b['registered'] for b in kept),
+            'turnout': round(sum(b['voted'] for b in kept) / sum(b['registered'] for b in kept), 4) if kept else None,
             'liberal_share': round(sum(b['liberal'] for b in kept) / valid, 4) if valid else None,
             'arab_share': round(sum(b['arab'] for b in kept) / valid, 4) if valid else None,
             'coalition_share': round(sum(b['coalition'] for b in kept) / valid, 4) if valid else None,
@@ -119,6 +120,9 @@ def main():
           f'{sum(s["valid"] for s in sites)} valid votes')
     for bloc in ('liberal', 'arab', 'coalition'):
         print(f'{bloc} share: Jerusalem {share(sites, bloc):.1%}, בית הכרם {share(bhk, bloc):.1%}')
+    kept = [b for s in sites for b in s['boxes'] if not b['excluded']]
+    print(f'turnout: Jerusalem {sum(b["voted"] for b in kept) / sum(b["registered"] for b in kept):.1%}, בית הכרם '
+          f'{sum(b["voted"] for s in bhk for b in s["boxes"] if not b["excluded"]) / sum(s["registered"] for s in bhk):.1%}')
     print(f'{sum(1 for s in sites if s["valid"] and s["arab_share"] > s["liberal_share"])} buildings where the Arab bloc '
           f'outpolls the liberal one')
 

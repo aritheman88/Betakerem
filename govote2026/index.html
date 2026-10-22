@@ -12,7 +12,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-  <link rel="stylesheet" href="style.css?v=7">
+  <link rel="stylesheet" href="style.css?v=8">
 </head>
 <body>
   <header class="top">
@@ -58,9 +58,18 @@
     </div>
     <div class="legend results-legend" id="results-legend">
       <b>בחירות 2022 · קולות לפי קלפי</b>
-      <div class="res-scale"><span>קואליציה</span><i></i><span>ליברלים + גוש ערבי</span></div>
-      <div class="res-scale arab"><span>קואליציה</span><i></i><span>כשהגוש הערבי מוביל</span></div>
-      <small>עיגול לכל מבנה קלפי בירושלים, גודלו לפי מספר המצביעים; עיגולי בית הכרם מסומנים במסגרת כהה; האחוז בעיגול הוא ליברלים + גוש ערבי. ליברלים: יש עתיד, המחנה הממלכתי, העבודה, מרצ, ישראל ביתנו. גוש ערבי: חד"ש-תע"ל, רע"ם. קואליציה: הליכוד, ש"ס, יהדות התורה, הציונות הדתית. לחצו על עיגול לפירוט.</small>
+      <div class="res-mode" id="results-mode" role="group" aria-label="מה להציג">
+        <button type="button" data-mode="blocs" aria-pressed="true">גושים</button><button type="button" data-mode="turnout" aria-pressed="false">שיעור הצבעה</button>
+      </div>
+      <div class="blocs-only">
+        <div class="res-scale"><span>קואליציה</span><i></i><span>ליברלים + גוש ערבי</span></div>
+        <div class="res-scale arab"><span>קואליציה</span><i></i><span>כשהגוש הערבי מוביל</span></div>
+      </div>
+      <div class="turnout-only">
+        <div class="res-scale turnout"><span>40%</span><i></i><span>80%</span></div>
+        <small>מצביעים מתוך בעלי זכות הצבעה (בזב) בקלפי, בלי מעטפות כפולות. ממוצע העיר: 62%.</small>
+      </div>
+      <small>עיגול לכל מבנה קלפי בירושלים, גודלו לפי מספר המצביעים; עיגולי בית הכרם מסומנים במסגרת כהה; האחוז בעיגול הוא ליברלים + גוש ערבי, או שיעור ההצבעה. ליברלים: יש עתיד, המחנה הממלכתי, העבודה, מרצ, ישראל ביתנו. גוש ערבי: חד"ש-תע"ל, רע"ם. קואליציה: הליכוד, ש"ס, יהדות התורה, הציונות הדתית. לחצו על עיגול לפירוט.</small>
     </div>
     <div class="hint" id="hint">לחצו על בלוק כדי לראות כתובות ולתפוס אותו</div>
   </main>
@@ -77,6 +86,6 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
   <script src="config.js?v=2"></script>
-  <script src="app.js?v=8"></script>
+  <script src="app.js?v=9"></script>
 </body>
 </html>

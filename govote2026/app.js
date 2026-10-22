@@ -26,7 +26,7 @@ const ERRORS = {
 
 const SIM = Boolean(CFG.simulate);  // election-day demo: fake data, nothing is saved
 const DATA = CFG.dataBase || '';
-const GEO_VERSION = 3;  // bump when tools/build_blocks.py or build_results.py output changes, so browsers don't use stale blocks
+const GEO_VERSION = 4;  // bump when tools/build_blocks.py or build_results.py output changes, so browsers don't use stale blocks
 const params = new URLSearchParams(location.search);
 
 // ---------- backend: Supabase, or an in-memory stand-in for the simulation ----------
@@ -669,7 +669,8 @@ map.addControl(new LocateControl());
 // ---------- 2022 results layer ----------
 // one circle per polling building in Jerusalem, coloured by the liberal + Arab bloc share vs. the coalition (red);
 // the non-coalition side is blue where the liberal bloc leads and green where the Arab bloc does
-const RESULTS = { layer: null, on: false };
+// or, in turnout mode, by the share of registered voters who voted (red low, green high)
+const RESULTS = { layer: null, on: false, mode: 'blocs' };
 const pct = x => `${Math.round(100 * x)}%`;
 const BLOC_RGB = { coalition: [185, 28, 28], liberal: [29, 78, 216], arab: [21, 128, 61] };
 
@@ -684,32 +685,50 @@ function shareColor(opposition, arabLeads = false) {
 const blocColor = bloc => `rgb(${BLOC_RGB[bloc].join(',')})`;
 const siteColor = site => shareColor(site.liberal_share + site.arab_share, site.arab_share > site.liberal_share);
 
+function turnoutColor(turnout) {
+  // red at <=40%, amber at 60% (about the city average), green at >=80%
+  const t = Math.max(-1, Math.min(1, (turnout - 0.6) / 0.2));
+  const mix = (a, b, k) => a.map((v, i) => Math.round(v + (b[i] - v) * k));
+  const rgb = t < 0 ? mix([234, 179, 8], [185, 28, 28], -t) : mix([234, 179, 8], [21, 128, 61], t);
+  return `rgb(${rgb.join(',')})`;
+}
+
 function resultsPopup(site) {
   const rows = site.boxes.map(b => `<tr class="${b.excluded ? 'excluded' : ''}">
-      <td><bdi>${esc(b.kalpi)}</bdi></td><td>${b.valid}</td>
+      <td><bdi>${esc(b.kalpi)}</bdi></td><td>${b.valid}</td><td style="color:${turnoutColor(b.voted / b.registered)}">${pct(b.voted / b.registered)}</td>
       <td style="color:${blocColor('liberal')}">${pct(b.liberal / b.valid)}</td><td style="color:${blocColor('arab')}">${pct(b.arab / b.valid)}</td>
       <td style="color:${blocColor('coalition')}">${pct(b.coalition / b.valid)}</td></tr>
-      ${b.excluded ? `<tr class="excluded"><td colspan="5">${esc(b.excluded)} – לא נכללה בצבע</td></tr>` : ''}`).join('');
+      ${b.excluded ? `<tr class="excluded"><td colspan="6">${esc(b.excluded)} – לא נכללה בצבע</td></tr>` : ''}`).join('');
   const where = site.beit_hakerem ? 'בית הכרם' : `${esc(site.neighbourhood)} (שיוך משוער)`;
-  return `<div class="res-pop"><b>${esc(site.label)}</b><div class="muted">${esc(site.address)} · ${where}<br>${site.valid.toLocaleString('he-IL')} קולות כשרים${site.approx ? ' · המיקום על המפה משוער' : ''}</div>
+  return `<div class="res-pop"><b>${esc(site.label)}</b><div class="muted">${esc(site.address)} · ${where}<br>${site.valid.toLocaleString('he-IL')} קולות כשרים · <span style="color:${turnoutColor(site.turnout)}">הצבעה ${pct(site.turnout)}</span> מתוך ${site.registered.toLocaleString('he-IL')} בעלי זכות${site.approx ? ' · המיקום על המפה משוער' : ''}</div>
     <div class="res-big"><span style="color:${blocColor('liberal')}">ליברלים ${pct(site.liberal_share)}</span> · <span style="color:${blocColor('arab')}">גוש ערבי ${pct(site.arab_share)}</span> · <span style="color:${blocColor('coalition')}">קואליציה ${pct(site.coalition_share)}</span></div>
-    <table><tr><th>קלפי</th><th>כשרים</th><th>ליברלים</th><th>ערבי</th><th>קואליציה</th></tr>${rows}</table></div>`;
+    <table><tr><th>קלפי</th><th>כשרים</th><th>הצבעה</th><th>ליברלים</th><th>ערבי</th><th>קואליציה</th></tr>${rows}</table></div>`;
 }
 
 async function loadResults() {
   const data = await fetch(`${DATA}results2022.json?v=${GEO_VERSION}`).then(r => r.json());
-  RESULTS.layer = L.layerGroup(data.sites.filter(site => site.valid).map(site => {
+  RESULTS.sites = data.sites.filter(site => site.valid);
+  RESULTS.layer = L.layerGroup();
+  RESULTS.bounds = L.latLngBounds(data.sites.map(site => [site.lat, site.lon]));
+  drawResults();
+}
+
+function drawResults() {
+  const turnout = RESULTS.mode === 'turnout';
+  RESULTS.layer.clearLayers();
+  for (const site of RESULTS.sites) {
     const d = Math.round(2 * (6 + Math.sqrt(site.valid) / 5));
-    const opposition = site.liberal_share + site.arab_share;
-    const label = d >= 26 ? pct(opposition) : '';
+    const value = turnout ? site.turnout : site.liberal_share + site.arab_share;
+    const label = d >= 26 ? pct(value) : '';
     const icon = L.divIcon({
       className: `res-marker${site.beit_hakerem ? ' home' : ''}`, iconSize: [d, d],
-      html: `<div class="res-dot" style="background:${siteColor(site)};font-size:${Math.max(10, d / 3.4)}px">${label}</div>`,
+      html: `<div class="res-dot" style="background:${turnout ? turnoutColor(value) : siteColor(site)};font-size:${Math.max(10, d / 3.4)}px">${label}</div>`,
     });
-    return L.marker([site.lat, site.lon], { icon, title: `${site.label} · ליברלים + גוש ערבי ${pct(opposition)}`, zIndexOffset: 1000 })
-      .bindPopup(resultsPopup(site), { maxWidth: 300 });
-  }));
-  RESULTS.bounds = L.latLngBounds(data.sites.map(site => [site.lat, site.lon]));
+    L.marker([site.lat, site.lon], { icon, title: `${site.label} · ${turnout ? 'הצבעה' : 'ליברלים + גוש ערבי'} ${pct(value)}`, zIndexOffset: 1000 })
+      .bindPopup(resultsPopup(site), { maxWidth: 320 }).addTo(RESULTS.layer);
+  }
+  document.getElementById('results-legend').dataset.mode = RESULTS.mode;
+  for (const btn of document.querySelectorAll('#results-mode button')) btn.setAttribute('aria-pressed', btn.dataset.mode === RESULTS.mode);
 }
 
 async function toggleResults() {
@@ -732,6 +751,9 @@ async function toggleResults() {
   document.getElementById('results-btn').setAttribute('aria-pressed', RESULTS.on);
 }
 document.getElementById('results-btn').addEventListener('click', toggleResults);
+for (const btn of document.querySelectorAll('#results-mode button')) {
+  btn.addEventListener('click', () => { RESULTS.mode = btn.dataset.mode; if (RESULTS.layer) drawResults(); });
+}
 
 // refresh when a phone wakes up (realtime sockets drop while the screen is off)
 document.addEventListener('visibilitychange', () => { if (!document.hidden && !SIM) loadClaims(); });
