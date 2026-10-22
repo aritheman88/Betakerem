@@ -4,7 +4,8 @@ A block is a group of residential addresses on one street (or a few small neighb
 streets) holding roughly BLOCK_TARGET apartments, drawn as an area around its buildings.
 
 Sources:
-    Jerusalem municipality GIS (BaseLayers MapServer): neighbourhood boundary (layer 40),
+    Jerusalem municipality GIS (BaseLayers MapServer): neighbourhood boundary (layer 40) minus the
+        sub-neighbourhoods in EXCLUDED_SUBNEIGHBOURHOODS (layer 138),
         address points with apartment counts (layer 10), building footprints (layer 30)
     OSM (Overpass): street centre-lines, used only to order addresses along each street
 
@@ -43,6 +44,8 @@ NEIGHBOURHOODS_LAYER = 40
 ADDRESSES_LAYER = 10   # רוזטות, מספרי בתים (has apartment counts)
 BUILDINGS_LAYER = 30   # מבנים (footprints)
 NEIGHBOURHOOD_CODE = 56  # בית הכרם (official, incl. רמת בית הכרם and יפה נוף)
+SUBNEIGHBOURHOODS_LAYER = 138
+EXCLUDED_SUBNEIGHBOURHOODS = ['רמת בית הכרם']  # left out of the project (2026-10-22): few liberal voters
 
 OVERPASS_URLS = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter']
 HIGHWAY_TYPES = ['primary', 'secondary', 'tertiary', 'unclassified', 'residential', 'living_street',
@@ -102,6 +105,15 @@ def muni_features_in(layer, bounds):
     for i in range(0, len(oids), 300):  # server caps responses at 1000 records
         feats += muni_query(layer, objectIds=','.join(map(str, oids[i:i + 300])), outFields='*', returnGeometry='true')['features']
     return feats
+
+
+def fetch_excluded(bounds):
+    minx, miny, maxx, maxy = bounds
+    env = json.dumps({'xmin': minx, 'ymin': miny, 'xmax': maxx, 'ymax': maxy, 'spatialReference': {'wkid': 4326}})
+    d = muni_query(SUBNEIGHBOURHOODS_LAYER, geometry=env, geometryType='esriGeometryEnvelope', outFields='SCHN_NAMA',
+                   returnGeometry='true')
+    return [[f['geometry']['rings'][0], f['geometry']['rings'][1:]] for f in d['features']
+            if f['attributes']['SCHN_NAMA'] in EXCLUDED_SUBNEIGHBOURHOODS]
 
 
 def fetch_boundary():
@@ -340,6 +352,10 @@ def main():
     OUT_DIR.mkdir(exist_ok=True)
     SQL_OUT.parent.mkdir(exist_ok=True)
     boundary = Polygon(*cached('boundary.json', lambda: [mapping(fetch_boundary())['coordinates'][0], []]))
+    excluded = cached('excluded_subneighbourhoods.json', lambda: fetch_excluded(boundary.bounds))
+    boundary = boundary.difference(unary_union([Polygon(*rings) for rings in excluded]))
+    if boundary.geom_type == 'MultiPolygon':  # keep the main part; drop slivers along the cut
+        boundary = max(boundary.geoms, key=lambda g: g.area)
     boundary_m = to_m(boundary)
     json.dump({'type': 'FeatureCollection', 'features': [
         {'type': 'Feature', 'properties': {'name': 'בית הכרם'}, 'geometry': round_coords(mapping(boundary))}]},

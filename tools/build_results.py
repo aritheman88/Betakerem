@@ -25,7 +25,7 @@ OUT = REPO / 'govote2026' / 'results2022.json'
 
 COALITION = ['מחל', 'שס', 'ג', 'ט']                         # Likud, Shas, UTJ, Religious Zionism
 LIBERAL = ['פה', 'כן', 'אמת', 'מרצ', 'ל']                # Yesh Atid, National Unity, Labor, Meretz, Yisrael Beiteinu
-ARAB = ['ום', 'עם']                                        # Hadash-Ta'al, Ra'am
+ARAB = ['ום', 'עם', 'ד']                                   # Hadash-Ta'al, Ra'am, Balad
 
 # polling-station address (as in the results file) -> (lat, lon)
 POSITIONS = {
