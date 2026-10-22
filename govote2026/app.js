@@ -1,7 +1,7 @@
 'use strict';
 
 const CFG = window.GOVOTE_CONFIG;
-const SLOTS = [['09-11', '09:00–11:00'], ['11-13', '11:00–13:00'], ['13-15', '13:00–15:00'], ['15-17', '15:00–17:00']];
+const SLOTS = [['10-12', '10:00–12:00'], ['12-14', '12:00–14:00'], ['14-16', '14:00–16:00'], ['16-18', '16:00–18:00']];
 const SLOT_LABEL = Object.fromEntries(SLOTS);
 const slotsText = slots => slots.map(s => `<bdi dir="ltr">${SLOT_LABEL[s] || esc(s)}</bdi>`).join(' · ');
 const COLORS = { free: '#dc2626', claimed: '#2563eb', in_progress: '#eab308', done: '#16a34a' };
@@ -17,10 +17,16 @@ const ERRORS = {
   not_allowed: 'לא הצלחנו לאמת שזה הבלוק שלכם. בדקו את מספר הטלפון.',
   bad_status: 'מצב הבלוק השתנה. רעננו את הדף.',
   no_such_block: 'בלוק לא קיים.',
+  no_such_house: 'כתובת לא קיימת בבלוק.',
+  not_claimed: 'הבלוק עדיין פנוי – אפשר פשוט לתפוס אותו.',
+  own_block: 'זה כבר הבלוק שלכם.',
+  already_requested: 'כבר שלחתם בקשה להצטרף לבלוק הזה. המארגנים יחזרו אליכם.',
+  bad_note: 'ההערה ארוכה מדי (עד 300 תווים).',
 };
 
 const SIM = Boolean(CFG.simulate);  // election-day demo: fake data, nothing is saved
 const DATA = CFG.dataBase || '';
+const GEO_VERSION = 2;  // bump when tools/build_blocks.py output changes, so browsers don't use stale blocks
 const params = new URLSearchParams(location.search);
 
 // ---------- backend: Supabase, or an in-memory stand-in for the simulation ----------
@@ -28,15 +34,18 @@ function supabaseApi() {
   const sb = supabase.createClient(CFG.supabaseUrl, CFG.supabaseKey);
   return {
     claims: () => sb.from('claims').select('*'),
+    houses: () => sb.from('house_done').select('house_id, block_id'),
     settings: () => sb.from('settings').select('live_from').maybeSingle(),
     rpc: (fn, args) => sb.rpc(fn, args),
-    subscribe: handler => sb.channel('claims-live')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'claims' }, handler).subscribe(),
+    subscribe: (onClaim, onHouse) => sb.channel('claims-live')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'claims' }, onClaim)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'house_done' }, onHouse).subscribe(),
   };
 }
 
 function simulatedApi() {
   const rows = {};
+  const houses = {};  // house id -> block id
   const ok = data => ({ data: data ?? null, error: null });
   const fail = message => ({ data: null, error: { message } });
   const NAMES = ['נועה ודני', 'מיכל', 'יואב ורונית', 'אבי', 'תמר', 'עומר ושירה', 'רחל', 'משפחת לוי', 'גיל', 'הדס ואורי'];
@@ -49,10 +58,16 @@ function simulatedApi() {
         if (r < 0.3) return;  // stays free
         const status = r < 0.55 ? 'claimed' : r < 0.75 ? 'in_progress' : 'done';
         const slot = SLOTS[Math.floor(rand() * SLOTS.length)][0];
-        rows[id] = { block_id: id, names: NAMES[i % NAMES.length], slots: [slot], status };
+        rows[id] = { block_id: id, names: NAMES[i % NAMES.length], slots: [slot], status, seeded: true };
+        // some addresses already marked in blocks that are under way
+        if (status === 'in_progress') {
+          const n = state.blocks[id].entrances;
+          for (let k = 1; k < n; k++) if (rand() < 0.4) houses[`${id}-${k}`] = id;
+        }
       });
     },
     claims: async () => ok(Object.values(rows).map(r => ({ ...r }))),
+    houses: async () => ok(Object.entries(houses).map(([house_id, block_id]) => ({ house_id, block_id }))),
     settings: async () => ok(null),
     subscribe() {},
     async rpc(fn, a) {
@@ -68,12 +83,25 @@ function simulatedApi() {
         case 'mark_done':
           if (!r || r.status === 'done') return fail('bad_status');
           r.status = 'done'; return ok();
+        case 'mark_house': {
+          if (!r || r.status === 'done') return fail('bad_status');
+          if (a.p_done) houses[a.p_house_id] = a.p_block_id;
+          else delete houses[a.p_house_id];
+          const marked = Object.values(houses).filter(b => b === a.p_block_id).length;
+          r.status = marked >= state.blocks[a.p_block_id].entrances ? 'done' : 'in_progress';
+          return ok(r.status);
+        }
         case 'reopen_round':
           if (!r || r.status !== 'done') return fail('bad_status');
           r.status = 'in_progress'; return ok();
         case 'release_block':
           if (!r || r.status === 'done') return fail('bad_status');
-          delete rows[a.p_block_id]; return ok();
+          delete rows[a.p_block_id];
+          Object.keys(houses).forEach(h => { if (houses[h] === a.p_block_id) delete houses[h]; });
+          return ok();
+        case 'request_join':
+          if (!r) return fail('not_claimed');
+          return ok();
         case 'my_blocks':
           return ok([]);
         default:
@@ -90,6 +118,7 @@ const state = {
   layers: {},        // id -> leaflet layer
   buildings: {},     // id -> [leaflet layers]
   claims: {},        // id -> claim row
+  housesDone: new Set(),  // house ids ('K001-3') marked done
   liveFrom: new Date(CFG.liveFrom),
   pollsClose: new Date(CFG.pollsClose),
   selected: null,
@@ -140,7 +169,7 @@ function tickCountdown() {
     target = state.pollsClose;
     label.textContent = 'עד סגירת הקלפיות (22:00)';
     liveBox.hidden = false;
-    liveBox.textContent = 'היום יום הבחירות! סמנו "מתחיל סיבוב" כשאתם יוצאים ו"סיימתי" בסוף.';
+    liveBox.textContent = 'היום יום הבחירות! סמנו "מתחיל סיבוב" כשאתם יוצאים, כל בניין שסיימתם, ו"סיימתי" בסוף.';
   } else {
     boxes.hidden = true;
     label.textContent = '';
@@ -175,18 +204,20 @@ function blockStyle(id) {
   const sel = state.selected === id;
   return { color: sel ? '#111' : COLORS[st], weight: sel ? 3 : 1.2, fillColor: COLORS[st], fillOpacity: sel ? 0.38 : 0.22 };
 }
-function buildingStyle(id) {
-  return { color: COLORS[statusOf(id)], weight: 0.6, fillColor: COLORS[statusOf(id)], fillOpacity: 0.75, interactive: false };
+function buildingStyle(id, houses) {
+  const done = houses && houses.length && houses.every(h => state.housesDone.has(h));
+  const color = done ? COLORS.done : COLORS[statusOf(id)];
+  return { color, weight: 0.6, fillColor: color, fillOpacity: 0.75, interactive: false };
 }
 function restyle(id) {
   if (state.layers[id]) state.layers[id].setStyle(blockStyle(id));
-  (state.buildings[id] || []).forEach(l => l.setStyle(buildingStyle(id)));
+  (state.buildings[id] || []).forEach(l => l.setStyle(buildingStyle(id, l.feature.properties.h)));
 }
 function restyleAll() { Object.keys(state.blocks).forEach(restyle); renderStats(); }
 
 async function loadGeo() {
   const [blocks, buildings, boundary] = await Promise.all(
-    ['blocks.geojson', 'buildings.geojson', 'boundary.geojson'].map(f => fetch(DATA + f).then(r => r.json())));
+    ['blocks.geojson', 'buildings.geojson', 'boundary.geojson'].map(f => fetch(`${DATA}${f}?v=${GEO_VERSION}`).then(r => r.json())));
   L.geoJSON(boundary, { style: { color: '#1f4e79', weight: 2, dashArray: '6 6', fill: false }, interactive: false }).addTo(map);
   const blockLayer = L.geoJSON(blocks, {
     style: f => blockStyle(f.properties.id),
@@ -197,7 +228,7 @@ async function loadGeo() {
     },
   }).addTo(map);
   L.geoJSON(buildings, {
-    style: f => buildingStyle(f.properties.b),
+    style: f => buildingStyle(f.properties.b, f.properties.h),
     interactive: false,
     onEachFeature: (f, layer) => (state.buildings[f.properties.b] ||= []).push(layer),
   }).addTo(map);
@@ -214,9 +245,10 @@ async function loadGeo() {
 
 // ---------- data ----------
 async function loadClaims() {
-  const { data, error } = await api.claims();
+  const [{ data, error }, houses] = await Promise.all([api.claims(), api.houses()]);
   if (error) { console.warn('claims', error); return; }
   state.claims = Object.fromEntries(data.map(c => [c.block_id, c]));
+  if (!houses.error) state.housesDone = new Set(houses.data.map(h => h.house_id));
   restyleAll();
   if (state.selected && !state.view) renderSheet();
 }
@@ -237,14 +269,30 @@ async function loadSettings() {
   }
 }
 
+const blockOfHouse = h => h.slice(0, h.lastIndexOf('-'));
+
+function forgetHouses(id) {
+  state.housesDone.forEach(h => { if (blockOfHouse(h) === id) state.housesDone.delete(h); });
+}
+
 function subscribe() {
+  const changed = id => {
+    restyle(id);
+    renderStats();
+    if (state.selected === id && !state.view) renderSheet();
+  };
   api.subscribe(payload => {
-      if (payload.eventType === 'DELETE') delete state.claims[payload.old.block_id];
-      else state.claims[payload.new.block_id] = payload.new;
-      const id = payload.eventType === 'DELETE' ? payload.old.block_id : payload.new.block_id;
-      restyle(id);
-      renderStats();
-      if (state.selected === id && !state.view) renderSheet();
+    const id = payload.eventType === 'DELETE' ? payload.old.block_id : payload.new.block_id;
+    if (payload.eventType === 'DELETE') { delete state.claims[id]; forgetHouses(id); }
+    else state.claims[id] = payload.new;
+    changed(id);
+  }, payload => {
+    // deletes carry only the primary key
+    const h = payload.eventType === 'DELETE' ? payload.old.house_id : payload.new.house_id;
+    if (!h) return;
+    if (payload.eventType === 'DELETE') state.housesDone.delete(h);
+    else state.housesDone.add(h);
+    changed(blockOfHouse(h));
   });
 }
 
@@ -308,12 +356,22 @@ function esc(s) {
   return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
-function addressesHtml(b, open) {
+function addressesHtml(b, open, canMark) {
+  const done = state.housesDone;
+  const blockDone = statusOf(b.id) === 'done';
   const items = b.addresses.map(a =>
-    `<li><b>${esc(a.street)}</b><div class="houses">${a.houses.map(h =>
-      `<span class="house"><bdi>${esc(h[0])}</bdi><small>${h[1]} דירות</small></span>`).join('')}</div></li>`).join('');
-  return `<details class="addr"${open ? ' open' : ''}><summary>כתובות בבלוק (${b.entrances} כניסות)</summary>
-    <ul>${items}</ul></details>`;
+    `<li><b>${esc(a.street)}</b><div class="houses">${a.houses.map(([label, apts, hid]) => {
+      const isDone = blockDone || done.has(hid);
+      const inner = `<bdi>${esc(label)}</bdi><small>${apts} דירות</small>${isDone ? '<i>✓</i>' : ''}`;
+      return canMark
+        ? `<button type="button" class="house${isDone ? ' done' : ''}" data-house="${hid}" aria-pressed="${isDone}">${inner}</button>`
+        : `<span class="house${isDone ? ' done' : ''}">${inner}</span>`;
+    }).join('')}</div></li>`).join('');
+  const marked = blockDone ? b.entrances : b.addresses.reduce((n, a) => n + a.houses.filter(h => done.has(h[2])).length, 0);
+  const progress = marked ? ` · ${marked} סומנו` : '';
+  const help = canMark ? '<p class="privacy">סיימתם בניין? לחצו על הכתובת שלו והיא תסומן בירוק. כשכל הכתובות מסומנות הבלוק כולו מסומן כהושלם.</p>' : '';
+  return `<details class="addr"${open ? ' open' : ''}><summary>כתובות בבלוק (${b.entrances} כניסות${progress})</summary>
+    ${help}<ul>${items}</ul></details>`;
 }
 
 function renderSheet(message) {
@@ -334,14 +392,18 @@ function renderSheet(message) {
     html += `<div class="meta">מתנדבים: <b>${esc(c.names)}</b><br>משמרות: ${slotsText(c.slots)}</div>`;
   }
 
+  const canJoin = c && st !== 'done' && (!mine || c.seeded);
   if (state.view === 'claim') {
     html += claimFormHtml();
+  } else if (state.view === 'join') {
+    html += joinFormHtml();
   } else if (!c) {
     html += `<button class="btn" id="act-claim" type="button">אני לוקח/ת את הבלוק הזה</button>`;
-    html += addressesHtml(b, false);
+    html += addressesHtml(b, false, false);
   } else {
     html += manageHtml(id, st, mine, live);
-    html += addressesHtml(b, mine);
+    if (canJoin) html += `<button class="btn ghost wide" id="act-join" type="button">רוצים להצטרף לבלוק הזה? שלחו בקשה</button>`;
+    html += addressesHtml(b, mine || st === 'in_progress', mine && live && st !== 'done');
   }
   if (message) html += `<div class="msg ${message.ok ? 'ok' : 'err'}">${esc(message.text)}</div>`;
   body.innerHTML = html;
@@ -365,6 +427,21 @@ function manageHtml(id, st, mine, live) {
   }
   return `<div class="phone-row"><label class="field" for="mg-phone">הטלפון שאיתו נרשמתם</label>
     <input id="mg-phone" type="tel" inputmode="tel" autocomplete="tel" value="${esc(savedPhone())}"></div>${actions}`;
+}
+
+function joinFormHtml() {
+  return `<form class="claim" id="join-form" novalidate>
+    <p class="privacy" style="margin-top:0">הבלוק כבר נתפס. השאירו פרטים והמארגנים יחברו אתכם עם המתנדבים שבו.</p>
+    <label class="field" for="jf-names">שם</label>
+    <input id="jf-names" type="text" maxlength="80" autocomplete="name" value="${esc(savedNames())}" required>
+    <label class="field" for="jf-phone">טלפון</label>
+    <input id="jf-phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="05X-XXXXXXX" value="${esc(savedPhone())}" required>
+    <label class="field" for="jf-note">הערה (לא חובה)</label>
+    <input id="jf-note" type="text" maxlength="300" placeholder="למשל: פנוי/ה בין 14:00 ל-16:00">
+    <p class="privacy">הפרטים לא מוצגים באתר ולא נמסרים למתנדבים בבלוק – הם מגיעים רק למארגני הקמפיין.</p>
+    <button class="btn" type="submit">שליחת בקשה</button>
+    <button class="btn link" type="button" id="cf-cancel">ביטול</button>
+  </form>`;
 }
 
 function claimFormHtml() {
@@ -391,7 +468,12 @@ function wireSheet(id) {
   if (cancel) cancel.onclick = () => { state.view = null; renderSheet(); };
   const form = document.getElementById('claim-form');
   if (form) form.onsubmit = e => { e.preventDefault(); submitClaim(id, form); };
+  const joinBtn = document.getElementById('act-join');
+  if (joinBtn) joinBtn.onclick = () => { state.view = 'join'; renderSheet(); };
+  const joinForm = document.getElementById('join-form');
+  if (joinForm) joinForm.onsubmit = e => { e.preventDefault(); submitJoin(id, joinForm); };
   body.querySelectorAll('[data-act]').forEach(btn => { btn.onclick = () => act(id, btn.dataset.act, btn); });
+  body.querySelectorAll('button[data-house]').forEach(btn => { btn.onclick = () => markHouse(id, btn); });
 }
 
 function errorText(error) {
@@ -424,6 +506,43 @@ async function submitClaim(id, form) {
   renderSheet({ ok: true, text: 'הבלוק שלכם! תודה רבה. ביום הבחירות חזרו לכאן לסמן התקדמות.' });
 }
 
+async function submitJoin(id, form) {
+  const names = form.querySelector('#jf-names').value.trim();
+  const phone = form.querySelector('#jf-phone').value.trim();
+  const note = form.querySelector('#jf-note').value.trim();
+  if (names.length < 2) return renderInline(form, ERRORS.bad_names);
+  if (phone.replace(/\D/g, '').length < 9) return renderInline(form, ERRORS.bad_phone);
+  const btn = form.querySelector('button[type=submit]');
+  btn.disabled = true;
+  const { error } = await api.rpc('request_join', { p_block_id: id, p_names: names, p_phone: phone, p_note: note || null });
+  btn.disabled = false;
+  if (error) return renderInline(form, errorText(error));
+  store.set('gv26_phone', phone);
+  store.set('gv26_names', names);
+  state.view = null;
+  renderSheet({ ok: true, text: 'הבקשה נשלחה! המארגנים יצרו איתכם קשר ויחברו אתכם עם המתנדבים בבלוק.' });
+}
+
+async function markHouse(id, btn) {
+  const hid = btn.dataset.house;
+  const done = !state.housesDone.has(hid);
+  btn.disabled = true;
+  const { data, error } = await api.rpc('mark_house', {
+    p_block_id: id, p_house_id: hid, p_done: done, p_token: tokens()[id] || null, p_phone: savedPhone() || null,
+  });
+  btn.disabled = false;
+  if (error) return renderSheet({ ok: false, text: errorText(error) });
+  if (done) state.housesDone.add(hid);
+  else state.housesDone.delete(hid);
+  const c = state.claims[id];
+  const wasDone = c.status === 'done';
+  c.status = data || 'in_progress';
+  restyle(id);
+  renderStats();
+  if (c.status === 'done' && !wasDone) renderSheet({ ok: true, text: 'כל הכתובות סומנו – הבלוק הושלם. כל הכבוד!' });
+  else renderSheet();
+}
+
 function renderInline(form, text) {
   let el = form.querySelector('.msg');
   if (!el) { el = document.createElement('div'); form.appendChild(el); }
@@ -453,6 +572,7 @@ async function act(id, action, btn) {
     dropToken(id);
     state.myIds.delete(id);
     delete state.claims[id];
+    forgetHouses(id);
   } else {
     const c = state.claims[id];
     c.status = { start_round: 'in_progress', mark_done: 'done', reopen_round: 'in_progress' }[action];

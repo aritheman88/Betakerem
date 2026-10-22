@@ -122,6 +122,10 @@ body:not(.live) .live-only { display: none; }
 .houses { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
 .house { border: 1px solid var(--line); border-radius: 8px; padding: 2px 8px; font-weight: 600; background: var(--bg); }
 .house small { font-weight: 400; color: var(--muted); margin-inline-start: 5px; font-size: .78em; }
+button.house { font: inherit; font-weight: 600; color: var(--ink); cursor: pointer; padding: 6px 10px; }
+.house.done { background: color-mix(in srgb, var(--done) 18%, var(--card)); border-color: var(--done); }
+.house i { font-style: normal; color: var(--done); margin-inline-start: 4px; }
+.btn.ghost.wide { width: 100%; margin-top: 8px; padding: 10px 12px; }
 
 .btn {
   font: inherit; font-weight: 700; border: 0; border-radius: 12px; padding: 12px 16px; cursor: pointer;

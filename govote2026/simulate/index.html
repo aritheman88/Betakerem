@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-  <link rel="stylesheet" href="../style.css?v=3">
+  <link rel="stylesheet" href="../style.css?v=4">
 </head>
 <body>
   <div class="sim-banner">סימולציה של יום הבחירות – הנתונים מומצאים ושום דבר לא נשמר. <a href="../">למפה האמיתית</a></div>
@@ -53,7 +53,7 @@
       <div class="live-only"><i class="prog"></i>בסיבוב</div>
       <div class="live-only"><i class="done"></i>הושלם</div>
     </div>
-    <div class="hint" id="hint">לחצו על בלוק: "מתחיל סיבוב" ← צהוב, "סיימתי" ← ירוק</div>
+    <div class="hint" id="hint">לחצו על בלוק: "מתחיל סיבוב" ← צהוב, כתובת שסיימתם ← בניין ירוק, "סיימתי" ← הכול ירוק</div>
   </main>
 
   <aside class="sheet" id="sheet" hidden aria-live="polite">
@@ -68,6 +68,6 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="../config.js?v=2"></script>
   <script>Object.assign(window.GOVOTE_CONFIG, { simulate: true, dataBase: '../' });</script>
-  <script src="../app.js?v=2"></script>
+  <script src="../app.js?v=4"></script>
 </body>
 </html>

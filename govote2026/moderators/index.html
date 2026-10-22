@@ -6,7 +6,7 @@
   <meta name="robots" content="noindex, nofollow">
   <title>מנהלים · בית הכרם יוצאת להצביע</title>
   <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="../style.css?v=3">
+  <link rel="stylesheet" href="../style.css?v=4">
   <style>
     .wrap { padding: 16px; max-width: 1200px; margin: 0 auto; width: 100%; }
     .login { max-width: 360px; margin: 12vh auto 0; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 20px; box-shadow: var(--shadow); }
@@ -26,6 +26,10 @@
     .pill { display: inline-flex; align-items: center; gap: 6px; }
     .muted { color: var(--muted); }
     .ltr { direction: ltr; unicode-bidi: isolate; }
+    h2.section { font-size: 1.1rem; color: var(--brand); margin: 22px 0 8px; display: flex; gap: 8px; align-items: center; }
+    .badge { background: var(--free); color: #fff; border-radius: 10px; padding: 0 8px; font-size: .85rem; }
+    tr.handled td { color: var(--muted); }
+    td .btn.ghost { padding: 4px 10px; font-size: .85rem; }
   </style>
 </head>
 <body>
@@ -54,11 +58,26 @@
         <button class="btn ghost" id="logout" type="button">יציאה</button>
       </div>
       <div class="summary" id="summary"></div>
+
+      <h2 class="section">בקשות להצטרף <span class="badge" id="req-count" hidden></span>
+        <label class="muted" style="font-size:.85rem;font-weight:400;margin-inline-start:auto"><input type="checkbox" id="req-all"> הצגת בקשות שטופלו</label></h2>
+      <p class="muted" style="font-size:.85rem;margin:0 0 6px">התקשרו לשני הצדדים וחברו ביניהם, ואז סמנו "טופל". הפרטים של כל צד לא נמסרים לצד השני בלי הסכמתו.</p>
+      <div class="table-wrap" style="margin-bottom:8px">
+        <table>
+          <thead><tr>
+            <th>בלוק</th><th>כתובת</th><th>מבקש/ת</th><th>טלפון</th><th>הערה</th>
+            <th>מתנדבי הבלוק</th><th>טלפון</th><th>נשלחה</th><th></th>
+          </tr></thead>
+          <tbody id="req-rows"></tbody>
+        </table>
+      </div>
+
+      <h2 class="section">בלוקים</h2>
       <div class="table-wrap">
         <table>
           <thead><tr>
             <th data-k="block_id">בלוק</th><th data-k="label">כתובת</th><th data-k="apartments">דירות</th>
-            <th data-k="status">מצב</th><th data-k="names">מתנדבים</th><th data-k="phone">טלפון</th>
+            <th data-k="status">מצב</th><th data-k="houses_done">כתובות שסומנו</th><th data-k="names">מתנדבים</th><th data-k="phone">טלפון</th>
             <th data-k="slots">משמרות</th><th data-k="claimed_at">נתפס</th><th data-k="started_at">התחיל</th><th data-k="done_at">הסתיים</th>
           </tr></thead>
           <tbody id="rows"></tbody>
@@ -74,10 +93,10 @@
   'use strict';
   const CFG = window.GOVOTE_CONFIG;
   const sb = supabase.createClient(CFG.supabaseUrl, CFG.supabaseKey);
-  const SLOT = { '09-11': '09–11', '11-13': '11–13', '13-15': '13–15', '15-17': '15–17' };
+  const SLOT = { '10-12': '10–12', '12-14': '12–14', '14-16': '14–16', '16-18': '16–18' };
   const STATUS = { free: 'פנוי', claimed: 'נתפס', in_progress: 'בסיבוב', done: 'הושלם' };
   const ORDER = { free: 0, claimed: 1, in_progress: 2, done: 3 };
-  let rows = [], sortKey = 'block_id', sortDir = 1, timer = null;
+  let rows = [], requests = [], sortKey = 'block_id', sortDir = 1, timer = null;
 
   const pwKey = 'gv26_mod_pw';
   const getPw = () => { try { return sessionStorage.getItem(pwKey) || ''; } catch { return ''; } };
@@ -105,6 +124,7 @@
     }
     setPw(pw);
     rows = res.rows;
+    requests = res.requests || [];
     document.getElementById('login').hidden = true;
     document.getElementById('panel').hidden = false;
     render();
@@ -114,7 +134,7 @@
 
   async function refresh() {
     const res = await load(getPw());
-    if (res.ok) { rows = res.rows; render(); }
+    if (res.ok) { rows = res.rows; requests = res.requests || []; render(); }
   }
 
   function showLogin() {
@@ -144,7 +164,33 @@
     });
   }
 
+  const telLink = p => p ? `<a class="ltr" href="tel:${esc(p)}">${esc(phoneFmt(p))}</a>` : '';
+
+  function renderRequests() {
+    const open = requests.filter(r => !r.handled_at).length;
+    const badge = document.getElementById('req-count');
+    badge.hidden = !open;
+    badge.textContent = open;
+    const all = document.getElementById('req-all').checked;
+    const list = requests.filter(r => all || !r.handled_at).slice().reverse();
+    document.getElementById('req-rows').innerHTML = list.length ? list.map(r => `<tr class="${r.handled_at ? 'handled' : ''}">
+      <td><bdi>${esc(r.block_id)}</bdi></td><td>${esc(r.label)}</td>
+      <td class="names">${esc(r.names)}</td><td>${telLink(r.phone)}</td><td class="names">${esc(r.note)}</td>
+      <td class="names">${r.owner_names ? esc(r.owner_names) : '<span class="muted">הבלוק שוחרר</span>'}</td><td>${telLink(r.owner_phone)}</td>
+      <td class="muted">${time(r.created_at)}</td>
+      <td><button class="btn ghost" type="button" data-req="${r.id}" data-handled="${r.handled_at ? 0 : 1}">${r.handled_at ? 'החזרה לפתוחות' : 'טופל ✓'}</button></td>
+    </tr>`).join('') : `<tr><td colspan="9" class="muted">אין בקשות ${all ? '' : 'פתוחות '}כרגע</td></tr>`;
+    document.querySelectorAll('button[data-req]').forEach(btn => btn.onclick = async () => {
+      btn.disabled = true;
+      const { data, error } = await sb.rpc('moderator_handle_request',
+        { p_password: getPw(), p_id: Number(btn.dataset.req), p_handled: btn.dataset.handled === '1' });
+      if (error || !data.ok) { btn.disabled = false; btn.textContent = 'שגיאה, נסו שוב'; return; }
+      refresh();
+    });
+  }
+
   function render() {
+    renderRequests();
     const list = filtered();
     const count = s => rows.filter(r => r.status === s).length;
     const people = new Set(rows.filter(r => r.phone).map(r => r.phone)).size;
@@ -154,18 +200,20 @@
     document.getElementById('rows').innerHTML = list.map(r => `<tr>
       <td><bdi>${esc(r.block_id)}</bdi></td><td>${esc(r.label)}</td><td>${r.apartments}</td>
       <td><span class="pill"><span class="dot ${r.status}"></span>${STATUS[r.status]}</span></td>
+      <td class="muted">${r.status === 'free' ? '' : `${r.status === 'done' ? r.entrances : r.houses_done}/${r.entrances}`}</td>
       <td class="names">${esc(r.names)}</td>
-      <td>${r.phone ? `<a class="ltr" href="tel:${esc(r.phone)}">${esc(phoneFmt(r.phone))}</a>` : ''}</td>
+      <td>${telLink(r.phone)}</td>
       <td class="ltr">${(r.slots || []).map(s => SLOT[s] || s).join(', ')}</td>
       <td class="muted">${time(r.claimed_at)}</td><td class="muted">${time(r.started_at)}</td><td class="muted">${time(r.done_at)}</td>
     </tr>`).join('');
   }
 
   function downloadCsv() {
-    const head = ['בלוק', 'כתובת', 'דירות', 'מצב', 'מתנדבים', 'טלפון', 'משמרות', 'נתפס', 'התחיל', 'הסתיים'];
+    const head = ['בלוק', 'כתובת', 'דירות', 'מצב', 'כתובות שסומנו', 'מתנדבים', 'טלפון', 'משמרות', 'נתפס', 'התחיל', 'הסתיים'];
     const cell = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
     const lines = [head.map(cell).join(',')].concat(filtered().map(r => [
-      r.block_id, r.label, r.apartments, STATUS[r.status], r.names, phoneFmt(r.phone),
+      r.block_id, r.label, r.apartments, STATUS[r.status], r.status === 'free' ? '' : `${r.houses_done}/${r.entrances}`,
+      r.names, phoneFmt(r.phone),
       (r.slots || []).map(s => SLOT[s] || s).join(' '), time(r.claimed_at), time(r.started_at), time(r.done_at),
     ].map(cell).join(',')));
     const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
@@ -183,6 +231,7 @@
   });
   document.getElementById('q').addEventListener('input', render);
   document.getElementById('status').addEventListener('change', render);
+  document.getElementById('req-all').addEventListener('change', renderRequests);
   document.getElementById('csv').addEventListener('click', downloadCsv);
   document.getElementById('logout').addEventListener('click', () => { setPw(''); rows = []; showLogin(); });
   document.querySelectorAll('th[data-k]').forEach(th => th.addEventListener('click', () => {

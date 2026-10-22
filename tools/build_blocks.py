@@ -48,14 +48,16 @@ OVERPASS_URLS = ['https://overpass-api.de/api/interpreter', 'https://overpass.ku
 HIGHWAY_TYPES = ['primary', 'secondary', 'tertiary', 'unclassified', 'residential', 'living_street',
                  'pedestrian', 'footway', 'path', 'steps', 'service']
 
-BLOCK_TARGET = 65      # apartments per block the splitter aims for
-SMALL_BLOCK = 35       # blocks below this are merged into a neighbouring block...
-MERGED_MAX = 95        # ...as long as the result stays at or below this
+BLOCK_TARGET = 30      # apartments per block the splitter aims for
+SMALL_BLOCK = 20       # blocks below this are merged into a neighbouring block...
+MERGED_MAX = 40        # ...as long as the result stays at or below this
 MERGE_DISTANCE_M = 90  # and the two blocks are this close
+SPLIT_MIN = 15         # a block over MERGED_MAX is split only if no part ends up below this
 MIN_BLOCK = 5          # blocks still this small after merging are dropped (isolated houses on main roads)
 NAME_MATCH_MIN = 0.6
 CELL_REACH_M = 22      # how far a block's area extends beyond its buildings
 USER_AGENT = 'betakerem-govote2026/1.0'
+ID_PREFIX = 'K'        # block ids K001...; changed from B when blocks were halved, so old device tokens can't match
 
 _to_m = Transformer.from_crs(4326, 2039, always_xy=True)  # Israeli TM grid, metres
 _to_deg = Transformer.from_crs(2039, 4326, always_xy=True)
@@ -222,10 +224,10 @@ def order_along(addrs, path):
     return [addrs[i] for i in np.argsort((xy - xy.mean(axis=0)) @ axis)]
 
 
-def split_balanced(addrs):
+def split_balanced(addrs, k=None):
     """Cut an ordered address list into k contiguous chunks of roughly equal apartments."""
     total = sum(a['apts'] for a in addrs)
-    k = max(1, round(total / BLOCK_TARGET))
+    k = k or max(1, round(total / BLOCK_TARGET))
     if k == 1:
         return [addrs]
     chunks, cur, acc, cut = [], [], 0, 1
@@ -268,6 +270,20 @@ def merge_small(blocks):
             return blocks
 
 
+def split_large(blocks):
+    """Split blocks still over MERGED_MAX in two or more, unless that leaves a part under SPLIT_MIN."""
+    out = []
+    for b in blocks:
+        total = sum(a['apts'] for a in b)
+        if total > MERGED_MAX and len(b) > 1:
+            parts = split_balanced(b, math.ceil(total / MERGED_MAX))
+            if min(sum(a['apts'] for a in p) for p in parts) >= SPLIT_MIN:
+                out += parts
+                continue
+        out.append(b)
+    return out
+
+
 def block_label(addrs):
     by_street = defaultdict(list)
     for a in addrs:
@@ -280,14 +296,18 @@ def block_label(addrs):
     return label
 
 
-def address_list(addrs):
+def address_list(addrs, bid):
+    """Addresses grouped by street; also gives each address a house id ('K001-3') in a['hid']."""
     by_street = defaultdict(list)
     for a in addrs:
         by_street[a['street']].append(a)
-    out = []
+    out, n = [], 0
     for street in sorted(by_street, key=lambda s: -sum(a['apts'] for a in by_street[s])):
         houses = sorted(by_street[street], key=lambda a: a['num'])
-        out.append({'street': street, 'houses': [[a['label'], a['apts']] for a in houses]})
+        for a in houses:
+            n += 1
+            a['hid'] = f'{bid}-{n}'
+        out.append({'street': street, 'houses': [[a['label'], a['apts'], a['hid']] for a in houses]})
     return out
 
 
@@ -338,7 +358,7 @@ def main():
     blocks = []
     for street, sa in by_street.items():
         blocks += split_balanced(order_along(sa, paths[street]))
-    blocks = merge_small(blocks)
+    blocks = split_large(merge_small(blocks))
     dropped = [b for b in blocks if sum(a['apts'] for a in b) < MIN_BLOCK]
     if dropped:
         print('dropping tiny isolated blocks:', [block_label(b) for b in dropped])
@@ -355,14 +375,15 @@ def main():
     blocks.sort(key=lambda b: (-round(np.mean([a['pt'].y for a in b]), -2), np.mean([a['pt'].x for a in b])))
     areas = block_areas(blocks, footprints, boundary_m)
 
-    pt_tree = shapely.STRtree([a['pt'] for b in blocks for a in b])
+    pt_addr = [a for b in blocks for a in b]
+    pt_tree = shapely.STRtree([a['pt'] for a in pt_addr])
     pt_block = [i for i, b in enumerate(blocks) for _ in b]
     block_feats, building_feats = [], []
     for i, b in enumerate(blocks):
-        bid = f'B{i + 1:03d}'
+        bid = f'{ID_PREFIX}{i + 1:03d}'
         block_feats.append({'type': 'Feature', 'id': bid, 'geometry': round_coords(mapping(to_deg(areas[i]))), 'properties': {
             'id': bid, 'label': block_label(b), 'apartments': sum(a['apts'] for a in b),
-            'entrances': len(b), 'addresses': address_list(b)}})
+            'entrances': len(b), 'addresses': address_list(b, bid)}})
     for g in footprints:
         near = pt_tree.query(g, predicate='intersects')
         if len(near) == 0:
@@ -374,8 +395,10 @@ def main():
         for j in near:
             votes[pt_block[j]] += 1
         i = max(votes, key=votes.get)
+        # the building turns green once every address inside it is marked done
+        houses = sorted({pt_addr[j]['hid'] for j in near if pt_block[j] == i}, key=lambda h: int(h.split('-')[1]))
         building_feats.append({'type': 'Feature', 'geometry': round_coords(mapping(to_deg(g.simplify(0.5)))),
-                               'properties': {'b': f'B{i + 1:03d}'}})
+                               'properties': {'b': f'{ID_PREFIX}{i + 1:03d}', 'h': houses}})
 
     json.dump({'type': 'FeatureCollection', 'features': block_feats},
               open(OUT_DIR / 'blocks.geojson', 'w', encoding='utf-8'), ensure_ascii=False)
@@ -384,16 +407,17 @@ def main():
 
     with open(SQL_OUT, 'w', encoding='utf-8') as f:
         f.write('-- generated by tools/build_blocks.py\n')
-        f.write('insert into public.blocks (id, label, apartments) values\n')
-        f.write(',\n'.join(f"  ('{p['id']}', '{p['label'].replace(chr(39), chr(39) * 2)}', {p['apartments']})"
+        f.write('insert into public.blocks (id, label, apartments, entrances) values\n')
+        f.write(',\n'.join(f"  ('{p['id']}', '{p['label'].replace(chr(39), chr(39) * 2)}', {p['apartments']}, {p['entrances']})"
                            for p in (bf['properties'] for bf in block_feats)))
-        f.write('\non conflict (id) do update set label = excluded.label, apartments = excluded.apartments;\n')
+        f.write('\non conflict (id) do update set label = excluded.label, apartments = excluded.apartments,'
+                ' entrances = excluded.entrances;\n')
 
     sizes = sorted(bf['properties']['apartments'] for bf in block_feats)
     print(f'{len(block_feats)} blocks, {sum(sizes)} apartments in {sum(len(b) for b in blocks)} entrances, '
           f'{len(building_feats)} buildings drawn')
     print('apartments per block: min', sizes[0], 'median', sizes[len(sizes) // 2], 'max', sizes[-1],
-          '| <35:', sum(s < 35 for s in sizes), '| 35-95:', sum(35 <= s <= 95 for s in sizes), '| >95:', sum(s > 95 for s in sizes))
+          '| <20:', sum(s < 20 for s in sizes), '| 20-40:', sum(20 <= s <= 40 for s in sizes), '| >40:', sum(s > 40 for s in sizes))
     print('largest:', [(bf['properties']['label'], bf['properties']['apartments']) for bf in
                        sorted(block_feats, key=lambda x: -x['properties']['apartments'])[:6]])
 
