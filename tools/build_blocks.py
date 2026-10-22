@@ -45,7 +45,7 @@ ADDRESSES_LAYER = 10   # רוזטות, מספרי בתים (has apartment counts
 BUILDINGS_LAYER = 30   # מבנים (footprints)
 NEIGHBOURHOOD_CODE = 56  # בית הכרם (official, incl. רמת בית הכרם and יפה נוף)
 SUBNEIGHBOURHOODS_LAYER = 138
-EXCLUDED_SUBNEIGHBOURHOODS = ['רמת בית הכרם']  # left out of the project (2026-10-22): few liberal voters
+EXCLUDED_SUBNEIGHBOURHOODS = []  # e.g. ['רמת בית הכרם'] to leave it out (tried and reverted on 2026-10-22)
 
 OVERPASS_URLS = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter']
 HIGHWAY_TYPES = ['primary', 'secondary', 'tertiary', 'unclassified', 'residential', 'living_street',
@@ -107,13 +107,13 @@ def muni_features_in(layer, bounds):
     return feats
 
 
-def fetch_excluded(bounds):
+def fetch_subneighbourhoods(bounds):
     minx, miny, maxx, maxy = bounds
     env = json.dumps({'xmin': minx, 'ymin': miny, 'xmax': maxx, 'ymax': maxy, 'spatialReference': {'wkid': 4326}})
     d = muni_query(SUBNEIGHBOURHOODS_LAYER, geometry=env, geometryType='esriGeometryEnvelope', outFields='SCHN_NAMA',
                    returnGeometry='true')
-    return [[f['geometry']['rings'][0], f['geometry']['rings'][1:]] for f in d['features']
-            if f['attributes']['SCHN_NAMA'] in EXCLUDED_SUBNEIGHBOURHOODS]
+    return [{'name': f['attributes']['SCHN_NAMA'], 'rings': [f['geometry']['rings'][0], f['geometry']['rings'][1:]]}
+            for f in d['features']]
 
 
 def fetch_boundary():
@@ -352,8 +352,10 @@ def main():
     OUT_DIR.mkdir(exist_ok=True)
     SQL_OUT.parent.mkdir(exist_ok=True)
     boundary = Polygon(*cached('boundary.json', lambda: [mapping(fetch_boundary())['coordinates'][0], []]))
-    excluded = cached('excluded_subneighbourhoods.json', lambda: fetch_excluded(boundary.bounds))
-    boundary = boundary.difference(unary_union([Polygon(*rings) for rings in excluded]))
+    if EXCLUDED_SUBNEIGHBOURHOODS:
+        subs = cached('subneighbourhoods.json', lambda: fetch_subneighbourhoods(boundary.bounds))
+        boundary = boundary.difference(unary_union(
+            [Polygon(*s['rings']) for s in subs if s['name'] in EXCLUDED_SUBNEIGHBOURHOODS]))
     if boundary.geom_type == 'MultiPolygon':  # keep the main part; drop slivers along the cut
         boundary = max(boundary.geoms, key=lambda g: g.area)
     boundary_m = to_m(boundary)
