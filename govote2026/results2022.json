@@ -1,0 +1,290 @@
+{
+ "election": "הבחירות לכנסת ה-25 (1.11.2022)",
+ "sites": [
+  {
+   "label": "בית ספר ויצ\"ו בית הכרם",
+   "address": "החלוץ 47",
+   "lat": 31.77641,
+   "lon": 35.19137,
+   "boxes": [
+    {
+     "kalpi": "213.1",
+     "venue": "בית ספר ויצ\"ו בית הכרם",
+     "valid": 406,
+     "registered": 590,
+     "coalition": 96,
+     "liberal": 294,
+     "excluded": null
+    },
+    {
+     "kalpi": "213.2",
+     "venue": "בית ספר ויצ\"ו בית הכרם",
+     "valid": 381,
+     "registered": 590,
+     "coalition": 100,
+     "liberal": 271,
+     "excluded": null
+    },
+    {
+     "kalpi": "213.3",
+     "venue": "בית ספר ויצ\"ו בית הכרם",
+     "valid": 400,
+     "registered": 590,
+     "coalition": 111,
+     "liberal": 279,
+     "excluded": null
+    },
+    {
+     "kalpi": "213.4",
+     "venue": "בית ספר ויצ\"ו בית הכרם",
+     "valid": 409,
+     "registered": 590,
+     "coalition": 95,
+     "liberal": 305,
+     "excluded": null
+    },
+    {
+     "kalpi": "213.5",
+     "venue": "בית ספר ויצ\"ו בית הכרם",
+     "valid": 381,
+     "registered": 590,
+     "coalition": 107,
+     "liberal": 255,
+     "excluded": null
+    },
+    {
+     "kalpi": "213.6",
+     "venue": "בית ספר ויצ\"ו בית הכרם",
+     "valid": 394,
+     "registered": 586,
+     "coalition": 102,
+     "liberal": 275,
+     "excluded": null
+    }
+   ],
+   "valid": 2371,
+   "registered": 3536,
+   "liberal_share": 0.7081,
+   "coalition_share": 0.2577
+  },
+  {
+   "label": "ממ\"ד דרור",
+   "address": "שחר 19",
+   "lat": 31.78063,
+   "lon": 35.19424,
+   "boxes": [
+    {
+     "kalpi": "214",
+     "venue": "ממ\"ד יסודי קהילתי דרור",
+     "valid": 306,
+     "registered": 488,
+     "coalition": 72,
+     "liberal": 224,
+     "excluded": null
+    },
+    {
+     "kalpi": "261",
+     "venue": "ממ\"ד יסודי קהילתי דרור",
+     "valid": 385,
+     "registered": 651,
+     "coalition": 62,
+     "liberal": 307,
+     "excluded": null
+    },
+    {
+     "kalpi": "275",
+     "venue": "ממ\"ד יסודי קהילתי דרור",
+     "valid": 318,
+     "registered": 587,
+     "coalition": 100,
+     "liberal": 198,
+     "excluded": null
+    }
+   ],
+   "valid": 1009,
+   "registered": 1726,
+   "liberal_share": 0.7225,
+   "coalition_share": 0.2319
+  },
+  {
+   "label": "בי\"ס ממלכתי בית הכרם",
+   "address": "מעגל בית המדרש 8",
+   "lat": 31.78188,
+   "lon": 35.19131,
+   "boxes": [
+    {
+     "kalpi": "274.1",
+     "venue": "בי\"ס ממלכתי בית הכרם",
+     "valid": 386,
+     "registered": 645,
+     "coalition": 104,
+     "liberal": 264,
+     "excluded": null
+    },
+    {
+     "kalpi": "274.2",
+     "venue": "בי\"ס ממלכתי בית הכרם",
+     "valid": 376,
+     "registered": 645,
+     "coalition": 115,
+     "liberal": 245,
+     "excluded": null
+    },
+    {
+     "kalpi": "274.3",
+     "venue": "בי\"ס ממלכתי בית הכרם",
+     "valid": 391,
+     "registered": 644,
+     "coalition": 102,
+     "liberal": 272,
+     "excluded": null
+    }
+   ],
+   "valid": 1153,
+   "registered": 1934,
+   "liberal_share": 0.6774,
+   "coalition_share": 0.2784
+  },
+  {
+   "label": "קמפוס זיו (תיכון זיו-מרקס ומתנ\"ס זיו)",
+   "address": "שד' הרצל 137",
+   "lat": 31.7769,
+   "lon": 35.18621,
+   "boxes": [
+    {
+     "kalpi": "267",
+     "venue": "תיכון ע\"ש זיו-מרקס",
+     "valid": 395,
+     "registered": 551,
+     "coalition": 373,
+     "liberal": 21,
+     "excluded": "קלפי חרדית – מצביעיה כנראה גרים מחוץ לשכונה"
+    },
+    {
+     "kalpi": "280",
+     "venue": "תיכון ע\"ש זיו-מרקס",
+     "valid": 203,
+     "registered": 583,
+     "coalition": 44,
+     "liberal": 158,
+     "excluded": null
+    },
+    {
+     "kalpi": "282",
+     "venue": "תיכון ע\"ש זיו-מרקס",
+     "valid": 418,
+     "registered": 581,
+     "coalition": 183,
+     "liberal": 218,
+     "excluded": null
+    },
+    {
+     "kalpi": "286",
+     "venue": "תיכון ע\"ש זיו-מרקס",
+     "valid": 464,
+     "registered": 695,
+     "coalition": 424,
+     "liberal": 34,
+     "excluded": "קלפי חרדית – מצביעיה כנראה גרים מחוץ לשכונה"
+    },
+    {
+     "kalpi": "298",
+     "venue": "תיכון ע\"ש זיו-מרקס",
+     "valid": 468,
+     "registered": 678,
+     "coalition": 174,
+     "liberal": 270,
+     "excluded": null
+    },
+    {
+     "kalpi": "444.1",
+     "venue": "מתנ\"ס קהילתי ע\"ש זיו",
+     "valid": 435,
+     "registered": 617,
+     "coalition": 152,
+     "liberal": 261,
+     "excluded": null
+    },
+    {
+     "kalpi": "444.2",
+     "venue": "מתנ\"ס קהילתי ע\"ש זיו",
+     "valid": 435,
+     "registered": 617,
+     "coalition": 176,
+     "liberal": 237,
+     "excluded": null
+    },
+    {
+     "kalpi": "444.3",
+     "venue": "מתנ\"ס קהילתי ע\"ש זיו",
+     "valid": 419,
+     "registered": 617,
+     "coalition": 170,
+     "liberal": 233,
+     "excluded": null
+    },
+    {
+     "kalpi": "444.4",
+     "venue": "מתנ\"ס קהילתי ע\"ש זיו",
+     "valid": 437,
+     "registered": 617,
+     "coalition": 145,
+     "liberal": 269,
+     "excluded": null
+    }
+   ],
+   "valid": 2815,
+   "registered": 4310,
+   "liberal_share": 0.5847,
+   "coalition_share": 0.3709
+  },
+  {
+   "label": "בי\"ס יפה נוף",
+   "address": "התומר 5",
+   "lat": 31.77974,
+   "lon": 35.18647,
+   "boxes": [
+    {
+     "kalpi": "260.1",
+     "venue": "בי\"ס יפה נוף",
+     "valid": 448,
+     "registered": 696,
+     "coalition": 143,
+     "liberal": 284,
+     "excluded": null
+    },
+    {
+     "kalpi": "260.2",
+     "venue": "בי\"ס יפה נוף",
+     "valid": 417,
+     "registered": 696,
+     "coalition": 139,
+     "liberal": 263,
+     "excluded": null
+    },
+    {
+     "kalpi": "260.3",
+     "venue": "בי\"ס יפה נוף",
+     "valid": 448,
+     "registered": 696,
+     "coalition": 153,
+     "liberal": 271,
+     "excluded": null
+    },
+    {
+     "kalpi": "260.4",
+     "venue": "בי\"ס יפה נוף",
+     "valid": 448,
+     "registered": 694,
+     "coalition": 136,
+     "liberal": 297,
+     "excluded": null
+    }
+   ],
+   "valid": 1761,
+   "registered": 2782,
+   "liberal_share": 0.6332,
+   "coalition_share": 0.3242
+  }
+ ]
+}

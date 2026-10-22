@@ -12,7 +12,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-  <link rel="stylesheet" href="style.css?v=4">
+  <link rel="stylesheet" href="style.css?v=5">
 </head>
 <body>
   <header class="top">
@@ -45,6 +45,7 @@
     <input id="search" list="streets" type="search" placeholder="חיפוש רחוב…" autocomplete="off" aria-label="חיפוש רחוב">
     <datalist id="streets"></datalist>
     <button id="mine-btn" class="btn ghost" type="button" hidden>הבלוקים שלי</button>
+    <button id="results-btn" class="btn ghost" type="button" aria-pressed="false">תוצאות 2022</button>
   </div>
 
   <main class="map-wrap">
@@ -54,6 +55,11 @@
       <div><i class="claimed"></i>נתפס</div>
       <div class="live-only"><i class="prog"></i>בסיבוב</div>
       <div class="live-only"><i class="done"></i>הושלם</div>
+    </div>
+    <div class="legend results-legend" id="results-legend">
+      <b>בחירות 2022 · קולות לפי קלפי</b>
+      <div class="res-scale"><span>קואליציה</span><i></i><span>ליברלים</span></div>
+      <small>עיגול לכל מבנה קלפי בשכונה, גודלו לפי מספר המצביעים. ליברלים: יש עתיד, המחנה הממלכתי, העבודה, מרצ, ישראל ביתנו, חד"ש-תע"ל, רע"ם. קואליציה: הליכוד, ש"ס, יהדות התורה, הציונות הדתית. לחצו על עיגול לפירוט.</small>
     </div>
     <div class="hint" id="hint">לחצו על בלוק כדי לראות כתובות ולתפוס אותו</div>
   </main>
@@ -70,6 +76,6 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
   <script src="config.js?v=2"></script>
-  <script src="app.js?v=5"></script>
+  <script src="app.js?v=6"></script>
 </body>
 </html>

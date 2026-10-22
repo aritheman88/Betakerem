@@ -665,6 +665,51 @@ const LocateControl = L.Control.extend({
 });
 map.addControl(new LocateControl());
 
+// ---------- 2022 results layer ----------
+// one circle per polling building in the neighbourhood, coloured by the liberal share (blue) vs. coalition (red)
+const RESULTS = { layer: null, on: false };
+const pct = x => `${Math.round(100 * x)}%`;
+
+function shareColor(liberal) {
+  // red at <=25% liberal, light grey at 50%, blue at >=75%
+  const t = Math.max(-1, Math.min(1, (liberal - 0.5) / 0.25));
+  const mix = (a, b, k) => a.map((v, i) => Math.round(v + (b[i] - v) * k));
+  const rgb = t < 0 ? mix([229, 231, 235], [185, 28, 28], -t) : mix([229, 231, 235], [29, 78, 216], t);
+  return `rgb(${rgb.join(',')})`;
+}
+
+function resultsPopup(site) {
+  const rows = site.boxes.map(b => `<tr class="${b.excluded ? 'excluded' : ''}">
+      <td><bdi>${esc(b.kalpi)}</bdi></td><td>${b.valid}</td>
+      <td style="color:${shareColor(1)}">${pct(b.liberal / b.valid)}</td><td style="color:${shareColor(0)}">${pct(b.coalition / b.valid)}</td></tr>
+      ${b.excluded ? `<tr class="excluded"><td colspan="4">${esc(b.excluded)} – לא נכללה בצבע</td></tr>` : ''}`).join('');
+  return `<div class="res-pop"><b>${esc(site.label)}</b><div class="muted">${esc(site.address)} · ${site.valid.toLocaleString('he-IL')} קולות כשרים</div>
+    <div class="res-big"><span style="color:${shareColor(1)}">ליברלים ${pct(site.liberal_share)}</span> · <span style="color:${shareColor(0)}">קואליציה ${pct(site.coalition_share)}</span></div>
+    <table><tr><th>קלפי</th><th>כשרים</th><th>ליברלים</th><th>קואליציה</th></tr>${rows}</table></div>`;
+}
+
+async function loadResults() {
+  const data = await fetch(`${DATA}results2022.json?v=${GEO_VERSION}`).then(r => r.json());
+  RESULTS.layer = L.layerGroup(data.sites.map(site => {
+    const d = Math.round(2 * (8 + Math.sqrt(site.valid) / 3.5));
+    const icon = L.divIcon({
+      className: 'res-marker', iconSize: [d, d],
+      html: `<div class="res-dot" style="background:${shareColor(site.liberal_share)}">${pct(site.liberal_share)}</div>`,
+    });
+    return L.marker([site.lat, site.lon], { icon, title: site.label, zIndexOffset: 1000 })
+      .bindPopup(resultsPopup(site), { maxWidth: 300 });
+  }));
+}
+
+async function toggleResults() {
+  if (!RESULTS.layer) await loadResults();
+  RESULTS.on = !RESULTS.on;
+  if (RESULTS.on) { RESULTS.layer.addTo(map); closeSheet(); } else RESULTS.layer.remove();
+  document.body.classList.toggle('results-on', RESULTS.on);
+  document.getElementById('results-btn').setAttribute('aria-pressed', RESULTS.on);
+}
+document.getElementById('results-btn').addEventListener('click', toggleResults);
+
 // refresh when a phone wakes up (realtime sockets drop while the screen is off)
 document.addEventListener('visibilitychange', () => { if (!document.hidden && !SIM) loadClaims(); });
 
