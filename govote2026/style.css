@@ -160,11 +160,63 @@ form.claim input[type=text], form.claim input[type=tel], .phone-row input {
 .foot { text-align: center; font-size: .8rem; color: var(--muted); padding: 12px 16px 16px; }
 .foot a { color: inherit; }
 
+/* ---------- collapsing: header, legends, block sheet ---------- */
+.chev { display: inline-block; width: 8px; height: 8px; border: solid currentColor; border-width: 0 2px 2px 0;
+  transform: rotate(-135deg); transition: transform .2s; margin: 0 4px; vertical-align: 1px; }
+[aria-expanded="false"] > .chev { transform: rotate(45deg); vertical-align: 4px; }
+.btn.ghost.icon { padding: 8px 12px; flex: none; }
+body.top-min .top, body.top-min .sim-link, body.top-min .stats-text { display: none; }
+body.top-min .stats { padding-top: 8px; }
+.legend-head { all: unset; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 6px;
+  width: 100%; font-weight: 700; }
+.legend.min > :not(.legend-head) { display: none !important; }
+.res-about summary { cursor: pointer; font-size: .78rem; color: var(--muted); margin-top: 4px; }
+.sheet-min {
+  position: absolute; top: 12px; left: 44px; border: 0; background: none; color: var(--muted); cursor: pointer; padding: 4px; font-size: 1rem;
+}
+/* bottom sheet: the arrow points down to minimise, up to expand */
+.sheet-min .chev { transform: rotate(45deg); vertical-align: 4px; }
+.sheet-min[aria-expanded="false"] .chev { transform: rotate(-135deg); vertical-align: 1px; }
+.sheet.min { cursor: pointer; }
+.sheet.min { max-height: none; padding-bottom: calc(8px + env(safe-area-inset-bottom)); }
+.sheet.min #sheet-body > :not(h2) { display: none; }
+.sheet.min #sheet-body > h2 { margin: 0; font-size: 1.05rem; }
+.sheet h2 { padding-left: 64px; }
+
 @media (max-width: 520px) {
-  .title h1 { font-size: 1.3rem; }
-  .cd-boxes div { min-width: 0; flex: 1; }
-  .cd-boxes span { font-size: 1.9rem; }
-  .map-wrap { margin: 0 8px; min-height: 60vh; }
+  .top { padding: 6px 10px 4px; gap: 4px; }
+  .title { flex: 1 1 100%; }
+  .title h1 { font-size: 1.05rem; }
+  .title .sub { display: none; }
+  .countdown { flex: 1 1 100%; max-width: none; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; text-align: start; }
+  .cd-label { font-size: .7rem; margin: 0; flex: 1; }
+  .cd-live { flex: 1 1 100%; }
+  .sim-banner { font-size: .78rem; padding: 4px 10px; }
+  .cd-boxes { gap: 4px; }
+  .cd-boxes div { min-width: 34px; padding: 2px 3px 1px; border-radius: 8px; box-shadow: none; }
+  .cd-boxes span { font-size: 1.15rem; }
+  .cd-boxes small { font-size: .6rem; }
+  .cd-live { font-size: .8rem; padding: 5px 8px; border-radius: 8px; }
+  .stats { padding: 0 10px 4px; }
+  .bar { height: 7px; }
+  .stats-text { font-size: .76rem; margin-top: 2px; }
+  .sim-link { padding: 0 10px 4px; font-size: .8rem; }
+  .toolbar { padding: 0 6px 6px; gap: 6px; }
+  .toolbar input { padding: 6px 10px; }
+  .btn.ghost { font-size: .82rem; padding: 6px 8px; }
+  .btn.ghost.icon { padding: 6px 10px; }
+  .map-wrap { margin: 0 6px; min-height: 72vh; min-height: 72dvh; border-radius: 10px; }
+  body.top-min .map-wrap { min-height: 84vh; min-height: 84dvh; }
+  .foot { padding: 6px 10px 8px; font-size: .7rem; }
+  .legend { font-size: .74rem; padding: 4px 8px; top: 6px; right: 6px; line-height: 1.5; }
+  .results-legend { top: auto; bottom: 22px; right: 6px; max-width: 190px; }
+  .res-scale { font-size: .68rem; gap: 4px; margin: 4px 0 2px; }
+  .res-mode button { font-size: .72rem; padding: 3px 4px; }
+  .sheet { max-height: 62vh; padding: 14px 12px calc(12px + env(safe-area-inset-bottom)); }
+  .sheet h2 { font-size: 1.1rem; }
+  .res-pop table { font-size: .74rem; }
+  .res-pop th, .res-pop td { padding: 1px 3px; }
+  .leaflet-popup-content { margin: 10px 12px; }
 }
 
 /* ---------- locate button, simulation ---------- */

@@ -345,6 +345,7 @@ function select(id) {
 }
 
 function closeSheet() {
+  setSheetMin(false);
   const prev = state.selected;
   state.selected = null;
   state.view = null;
@@ -352,6 +353,14 @@ function closeSheet() {
   if (prev) restyle(prev);
 }
 document.getElementById('sheet-close').addEventListener('click', closeSheet);
+
+// the sheet can shrink to its title so the map stays usable; tapping a block opens it in full again
+function setSheetMin(min) {
+  sheet.classList.toggle('min', min);
+  document.getElementById('sheet-min').setAttribute('aria-expanded', !min);
+}
+document.getElementById('sheet-min').addEventListener('click', e => { e.stopPropagation(); setSheetMin(!sheet.classList.contains('min')); });
+sheet.addEventListener('click', e => { if (sheet.classList.contains('min') && !e.target.closest('button')) setSheetMin(false); });
 
 function esc(s) {
   return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -409,6 +418,7 @@ function renderSheet(message) {
   if (message) html += `<div class="msg ${message.ok ? 'ok' : 'err'}">${esc(message.text)}</div>`;
   body.innerHTML = html;
   sheet.hidden = false;
+  setSheetMin(false);
   wireSheet(id);
 }
 
@@ -596,6 +606,7 @@ document.getElementById('mine-btn').addEventListener('click', () => {
     `<li data-id="${id}"><span class="dot ${statusOf(id)}"></span><span><b>${esc(state.blocks[id].label)}</b><br>
       <span class="meta">${STATUS_TEXT[statusOf(id)]} · ${slotsText(state.claims[id].slots)}</span></span></li>`).join('')}</ul>`;
   sheet.hidden = false;
+  setSheetMin(false);
   body.querySelectorAll('li[data-id]').forEach(li => {
     li.onclick = () => { const id = li.dataset.id; map.fitBounds(state.layers[id].getBounds(), { maxZoom: 18 }); select(id); };
   });
@@ -700,7 +711,7 @@ function resultsPopup(site) {
       <td style="color:${blocColor('coalition')}">${pct(b.coalition / b.valid)}</td></tr>
       ${b.excluded ? `<tr class="excluded"><td colspan="6">${esc(b.excluded)} – לא נכללה בצבע</td></tr>` : ''}`).join('');
   const where = site.beit_hakerem ? 'בית הכרם' : `${esc(site.neighbourhood)} (שיוך משוער)`;
-  return `<div class="res-pop"><b>${esc(site.label)}</b><div class="muted">${esc(site.address)} · ${where}<br>${site.valid.toLocaleString('he-IL')} קולות כשרים · <span style="color:${turnoutColor(site.turnout)}">הצבעה ${pct(site.turnout)}</span> מתוך ${site.registered.toLocaleString('he-IL')} בעלי זכות${site.approx ? ' · המיקום על המפה משוער' : ''}</div>
+  return `<div class="res-pop"><b>${esc(site.label)}</b><div class="muted">${esc(site.address)} · ${where}<br>${site.valid.toLocaleString('he-IL')} קולות כשרים<br><span style="color:${turnoutColor(site.turnout)}">הצבעה ${pct(site.turnout)}</span> מתוך ${site.registered.toLocaleString('he-IL')} בעלי זכות${site.approx ? ' · המיקום על המפה משוער' : ''}</div>
     <div class="res-big"><span style="color:${blocColor('liberal')}">ליברלים ${pct(site.liberal_share)}</span> · <span style="color:${blocColor('arab')}">גוש ערבי ${pct(site.arab_share)}</span> · <span style="color:${blocColor('coalition')}">קואליציה ${pct(site.coalition_share)}</span></div>
     <table><tr><th>קלפי</th><th>כשרים</th><th>הצבעה</th><th>ליברלים</th><th>ערבי</th><th>קואליציה</th></tr>${rows}</table></div>`;
 }
@@ -725,7 +736,9 @@ function drawResults() {
       html: `<div class="res-dot" style="background:${turnout ? turnoutColor(value) : siteColor(site)};font-size:${Math.max(10, d / 3.4)}px">${label}</div>`,
     });
     L.marker([site.lat, site.lon], { icon, title: `${site.label} · ${turnout ? 'הצבעה' : 'ליברלים + גוש ערבי'} ${pct(value)}`, zIndexOffset: 1000 })
-      .bindPopup(resultsPopup(site), { maxWidth: 320 }).addTo(RESULTS.layer);
+      .bindPopup(resultsPopup(site), {
+        maxWidth: Math.min(320, innerWidth - 50), maxHeight: Math.round(innerHeight * 0.5), autoPanPadding: [10, 10],
+      }).addTo(RESULTS.layer);
   }
   document.getElementById('results-legend').dataset.mode = RESULTS.mode;
   for (const btn of document.querySelectorAll('#results-mode button')) btn.setAttribute('aria-pressed', btn.dataset.mode === RESULTS.mode);
@@ -754,6 +767,29 @@ document.getElementById('results-btn').addEventListener('click', toggleResults);
 for (const btn of document.querySelectorAll('#results-mode button')) {
   btn.addEventListener('click', () => { RESULTS.mode = btn.dataset.mode; if (RESULTS.layer) drawResults(); });
 }
+
+// ---------- collapsible header and legends (remembered on this device) ----------
+const UI_KEY = 'gv26_ui';
+const uiPrefs = (() => { try { return JSON.parse(localStorage.getItem(UI_KEY)) || {}; } catch { return {}; } })();
+function setCollapsed(name, collapsed) {
+  uiPrefs[name] = collapsed;
+  try { localStorage.setItem(UI_KEY, JSON.stringify(uiPrefs)); } catch { /* private mode */ }
+  if (name === 'top') {
+    document.body.classList.toggle('top-min', collapsed);
+    const btn = document.getElementById('top-toggle');
+    btn.setAttribute('aria-expanded', !collapsed);
+    btn.setAttribute('aria-label', collapsed ? 'הצגת הכותרת' : 'הסתרת הכותרת');
+    map.invalidateSize();
+  } else {
+    document.getElementById(name).classList.toggle('min', collapsed);
+    document.querySelector(`[data-collapse="${name}"]`).setAttribute('aria-expanded', !collapsed);
+  }
+}
+document.getElementById('top-toggle').addEventListener('click', () => setCollapsed('top', !uiPrefs.top));
+for (const btn of document.querySelectorAll('[data-collapse]')) {
+  btn.addEventListener('click', () => setCollapsed(btn.dataset.collapse, !uiPrefs[btn.dataset.collapse]));
+}
+for (const name of ['top', 'legend', 'results-legend']) if (uiPrefs[name]) setCollapsed(name, true);
 
 // refresh when a phone wakes up (realtime sockets drop while the screen is off)
 document.addEventListener('visibilitychange', () => { if (!document.hidden && !SIM) loadClaims(); });
