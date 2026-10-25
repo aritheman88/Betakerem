@@ -11,6 +11,7 @@
   const HASH = 'bbf24ae413d6dc83c15d3130cba9ce32be3203da8429bf6a765c39db697e3e17';
   const KEY = 'betakerem_gate';
   const API_KEY = 'betakerem_api_key';
+  const WHATSAPP = 'https://chat.whatsapp.com/IrOGxStv0Kv21KbyD7ybna';  // for people who got the link but not the password
   const stored = k => { try { return localStorage.getItem(k); } catch { return null; } };
   let open;
   window.SITE_GATE = new Promise(resolve => { open = resolve; });
@@ -34,6 +35,9 @@
     #site-gate button { width: 100%; margin-top: 10px; font: inherit; font-weight: 700; font-size: 1.05rem; border: 0;
       border-radius: 12px; padding: 12px; background: #1f4e79; color: #fff; cursor: pointer; }
     #site-gate .err { color: #dc2626; font-size: .92rem; margin: 10px 0 0; min-height: 1.2em; }
+    #site-gate .join { margin: 14px 0 0; padding-top: 12px; border-top: 1px solid #e2e0da; font-size: .92rem; }
+    #site-gate .join a { display: inline-block; margin-top: 6px; padding: 8px 14px; border-radius: 10px; background: #1e9e57;
+      color: #fff; font-weight: 700; text-decoration: none; }
     @media (prefers-color-scheme: dark) {
       #site-gate { background: #15181c; color: #eceae6; }
       #site-gate form { background: #1f2328; border-color: #343a41; }
@@ -41,6 +45,7 @@
       #site-gate p { color: #a2a9b1; }
       #site-gate input { background: #15181c; border-color: #343a41; }
       #site-gate button { background: #2f6aa3; }
+      #site-gate .join { border-color: #343a41; }
     }`;
   document.head.appendChild(style);
 
@@ -58,6 +63,8 @@
         <input type="password" aria-label="סיסמה" placeholder="סיסמה" autocapitalize="off" autocorrect="off" spellcheck="false" required>
         <button type="submit">כניסה</button>
         <div class="err" aria-live="polite"></div>
+        <p class="join">קיבלתם את הקישור בלי סיסמה? הצטרפו לקבוצת המתנדבים בוואטסאפ ותקבלו אותה שם.<br>
+          <a href="${WHATSAPP}" target="_blank" rel="noopener">להצטרפות לקבוצת הוואטסאפ</a></p>
       </form>`;
     document.body.appendChild(gate);
     const form = gate.querySelector('form');
