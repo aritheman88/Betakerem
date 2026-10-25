@@ -4,3 +4,4 @@ __pycache__/
 .env
 tools/*.log
 /*.xlsx
+tools/backups/
