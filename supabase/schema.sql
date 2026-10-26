@@ -171,10 +171,7 @@ begin
        or not (p_slots <@ array['10-12', '12-14', '14-16', '16-18']) then
         raise exception 'bad_slots';
     end if;
-    -- light rate limits
-    if (select count(*) from public.claim_secrets where phone = v_phone) >= 5 then
-        raise exception 'too_many_for_phone';
-    end if;
+    -- light rate limit (no per-phone cap: one person may take many blocks)
     if (select count(*) from public.claim_log where action = 'claim' and at > now() - interval '1 minute') >= 30 then
         raise exception 'busy';
     end if;

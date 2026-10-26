@@ -6,5 +6,4 @@ window.GOVOTE_CONFIG = {
   // fallbacks until the settings row loads (Israel time, UTC+2 after DST ends on 25/10)
   liveFrom: '2026-10-27T00:00:00+02:00',
   pollsClose: '2026-10-27T22:00:00+02:00',
-  maxClaimsPerPhone: 5,
 };
