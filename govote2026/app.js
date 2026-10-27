@@ -26,7 +26,7 @@ const ERRORS = {
 
 const SIM = Boolean(CFG.simulate);  // election-day demo: fake data, nothing is saved
 const DATA = CFG.dataBase || '';
-const GEO_VERSION = 6;  // bump when tools/build_blocks.py or build_results.py output changes, so browsers don't use stale blocks
+const GEO_VERSION = 7;  // bump when tools/build_blocks.py or build_results.py output changes, so browsers don't use stale blocks
 const params = new URLSearchParams(location.search);
 
 // ---------- backend: Supabase, or an in-memory stand-in for the simulation ----------
@@ -685,10 +685,13 @@ const LocateControl = L.Control.extend({
 map.addControl(new LocateControl());
 
 // ---------- 2022 results layer ----------
-// one circle per polling building in Jerusalem, coloured by the liberal + Arab bloc share vs. the coalition (red);
+// one circle per polling building in Israel, coloured by the liberal + Arab bloc share vs. the coalition (red);
 // the non-coalition side is blue where the liberal bloc leads and green where the Arab bloc does
 // or, in turnout mode, by the share of registered voters who voted (red low, green high)
+// ~4,000 buildings: circles are drawn on a canvas, shrink as the map zooms out, and carry their % only when big
 const RESULTS = { layer: null, on: false, mode: 'blocs' };
+const RES_LABEL_MIN = 26;  // px diameter from which a circle shows its %
+const RES_LABEL_MAX = 400; // labels drawn at most, so a wide view stays fast
 const pct = x => `${Math.round(100 * x)}%`;
 const BLOC_RGB = { coalition: [185, 28, 28], liberal: [29, 78, 216], arab: [21, 128, 61] };
 
@@ -717,36 +720,68 @@ function resultsPopup(site) {
       <td style="color:${blocColor('liberal')}">${pct(b.liberal / b.valid)}</td><td style="color:${blocColor('arab')}">${pct(b.arab / b.valid)}</td>
       <td style="color:${blocColor('coalition')}">${pct(b.coalition / b.valid)}</td></tr>
       ${b.excluded ? `<tr class="excluded"><td colspan="6">${esc(b.excluded)} – לא נכללה בצבע</td></tr>` : ''}`).join('');
-  const where = site.beit_hakerem ? 'בית הכרם' : `${esc(site.neighbourhood)} (שיוך משוער)`;
-  return `<div class="res-pop"><b>${esc(site.label)}</b><div class="muted">${esc(site.address)} · ${where}<br>${site.valid.toLocaleString('he-IL')} קולות כשרים<br><span style="color:${turnoutColor(site.turnout)}">הצבעה ${pct(site.turnout)}</span> מתוך ${site.registered.toLocaleString('he-IL')} בעלי זכות${site.approx ? ' · המיקום על המפה משוער' : ''}</div>
+  const where = site.beit_hakerem ? 'בית הכרם'
+    : site.locality === 'ירושלים' ? `${esc(site.neighbourhood)} (שיוך משוער)` : esc(site.locality);
+  return `<div class="res-pop"><b>${esc(site.label)}</b><div class="muted">${site.address ? `${esc(site.address)} · ` : ''}${where}<br>${site.valid.toLocaleString('he-IL')} קולות כשרים<br><span style="color:${turnoutColor(site.turnout)}">הצבעה ${pct(site.turnout)}</span> מתוך ${site.registered.toLocaleString('he-IL')} בעלי זכות${site.approx ? ' · המיקום על המפה משוער' : ''}</div>
     <div class="res-big"><span style="color:${blocColor('liberal')}">ליברלים ${pct(site.liberal_share)}</span> · <span style="color:${blocColor('arab')}">גוש ערבי ${pct(site.arab_share)}</span> · <span style="color:${blocColor('coalition')}">קואליציה ${pct(site.coalition_share)}</span></div>
     <table><tr><th>קלפי</th><th>כשרים</th><th>הצבעה</th><th>ליברלים</th><th>ערבי</th><th>קואליציה</th></tr>${rows}</table></div>`;
 }
 
 async function loadResults() {
   const data = await fetch(`${DATA}results2022.json?v=${GEO_VERSION}`).then(r => r.json());
-  RESULTS.sites = data.sites.filter(site => site.valid);
+  // Beit HaKerem last, so its circles are drawn on top
+  RESULTS.sites = data.sites.filter(site => site.valid).sort((a, b) => a.beit_hakerem - b.beit_hakerem);
+  RESULTS.renderer = L.canvas({ padding: 0.3 });
   RESULTS.layer = L.layerGroup();
-  RESULTS.bounds = L.latLngBounds(data.sites.map(site => [site.lat, site.lon]));
+  RESULTS.labels = L.layerGroup().addTo(RESULTS.layer);
+  RESULTS.bounds = L.latLngBounds(data.sites.filter(site => site.locality === 'ירושלים').map(site => [site.lat, site.lon]));
+  map.on('zoomend', () => { if (RESULTS.on) sizeResults(); });
+  map.on('moveend', () => { if (RESULTS.on) labelResults(); });
   drawResults();
+}
+
+// full size from zoom 12 (Jerusalem), smaller below so the whole country stays readable
+const resScale = () => Math.min(1, 2 ** ((map.getZoom() - 12) * 0.6));
+const resRadius = site => Math.max(2, (6 + Math.sqrt(site.valid) / 5) * resScale());
+const resValue = site => RESULTS.mode === 'turnout' ? site.turnout : site.liberal_share + site.arab_share;
+
+function sizeResults() {
+  for (const circle of RESULTS.circles) circle.setRadius(resRadius(circle.site));
+  labelResults();
+}
+
+function labelResults() {
+  RESULTS.labels.clearLayers();
+  const view = map.getBounds().pad(0.1);
+  let n = 0;
+  for (const site of RESULTS.sites) {
+    const d = 2 * resRadius(site);
+    if (d < RES_LABEL_MIN || !view.contains([site.lat, site.lon])) continue;
+    if (++n > RES_LABEL_MAX) break;
+    L.marker([site.lat, site.lon], {
+      interactive: false, keyboard: false,
+      icon: L.divIcon({ className: 'res-label', iconSize: [d, d], html: `<span style="font-size:${Math.max(10, d / 3.4)}px">${pct(resValue(site))}</span>` }),
+    }).addTo(RESULTS.labels);
+  }
 }
 
 function drawResults() {
   const turnout = RESULTS.mode === 'turnout';
-  RESULTS.layer.clearLayers();
-  for (const site of RESULTS.sites) {
-    const d = Math.round(2 * (6 + Math.sqrt(site.valid) / 5));
-    const value = turnout ? site.turnout : site.liberal_share + site.arab_share;
-    const label = d >= 26 ? pct(value) : '';
-    const icon = L.divIcon({
-      className: `res-marker${site.beit_hakerem ? ' home' : ''}`, iconSize: [d, d],
-      html: `<div class="res-dot" style="background:${turnout ? turnoutColor(value) : siteColor(site)};font-size:${Math.max(10, d / 3.4)}px">${label}</div>`,
+  for (const circle of RESULTS.circles || []) RESULTS.layer.removeLayer(circle);
+  RESULTS.circles = RESULTS.sites.map(site => {
+    const circle = L.circleMarker([site.lat, site.lon], {
+      renderer: RESULTS.renderer, radius: resRadius(site), fillOpacity: 1,
+      fillColor: turnout ? turnoutColor(site.turnout) : siteColor(site),
+      color: site.beit_hakerem ? '#111827' : '#fff', weight: site.beit_hakerem ? 3 : 1.5,
     });
-    L.marker([site.lat, site.lon], { icon, title: `${site.label} · ${turnout ? 'הצבעה' : 'ליברלים + גוש ערבי'} ${pct(value)}`, zIndexOffset: 1000 })
-      .bindPopup(resultsPopup(site), {
-        maxWidth: Math.min(320, innerWidth - 50), maxHeight: Math.round(innerHeight * 0.5), autoPanPadding: [10, 10],
-      }).addTo(RESULTS.layer);
-  }
+    circle.site = site;
+    // the popup is built on first open: building 4,000 tables up front would slow the toggle
+    circle.bindPopup(() => resultsPopup(site), {
+      maxWidth: Math.min(320, innerWidth - 50), maxHeight: Math.round(innerHeight * 0.5), autoPanPadding: [10, 10],
+    });
+    return circle.addTo(RESULTS.layer);
+  });
+  labelResults();
   document.getElementById('results-legend').dataset.mode = RESULTS.mode;
   for (const btn of document.querySelectorAll('#results-mode button')) btn.setAttribute('aria-pressed', btn.dataset.mode === RESULTS.mode);
 }
@@ -754,13 +789,14 @@ function drawResults() {
 async function toggleResults() {
   if (!RESULTS.layer) await loadResults();
   RESULTS.on = !RESULTS.on;
-  // the results cover all of Jerusalem: let the map leave the neighbourhood while they are shown
+  // the results cover all of Israel: let the map leave the neighbourhood while they are shown (opens on Jerusalem)
   if (RESULTS.on) {
     RESULTS.layer.addTo(map);
     closeSheet();
     map.setMaxBounds(null);
-    map.setMinZoom(11);
+    map.setMinZoom(7);
     map.fitBounds(RESULTS.bounds, { padding: [10, 10] });
+    sizeResults();
   } else {
     RESULTS.layer.remove();
     map.setMinZoom(13);
