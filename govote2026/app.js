@@ -735,7 +735,7 @@ function nowPopup(shape) {
     `<tr><td><bdi>${esc(k)}</bdi></td><td>${e}</td><td>${v}</td><td style="color:${nowColor(p / national)}">${p}%</td><td>${esc(u)}</td></tr>`).join('');
   return `<div class="res-pop"><b>${esc(shape.name)}</b><div class="muted">${esc(shape.city)} · ${kalpis} קלפיות · נתוני ועדת הבחירות</div>
     <div class="res-big"><span style="color:${nowColor(percent / national)}">הצבעה עד ${esc(updated)}: ${percent}%</span> · ארצי ${national}%</div>
-    <div class="muted">${voted.toLocaleString('he-IL')} מתוך ${eligible.toLocaleString('he-IL')} בעלי זכות${prev != null ? ` · בעדכון הקודם (${esc(NOW.data.previous_time || '')}): ${prev}%` : ''}</div>
+    <div class="muted">${voted.toLocaleString('he-IL')} מתוך ${eligible.toLocaleString('he-IL')} בעלי זכות${prev != null ? ` · בעדכון הקודם (${esc((NOW.data.previous_time || '').slice(0, 5))}): ${prev}%` : ''}</div>
     ${y22 ? `<div class="muted" style="margin-top:4px">ב-2022 (מבני הקלפי בשכונה): הצבעה סופית ${pct(y22[4])} ·
       <span style="color:${blocColor('liberal')}">ליברלים ${pct(y22[1])}</span> · <span style="color:${blocColor('arab')}">ערבי ${pct(y22[2])}</span> ·
       <span style="color:${blocColor('coalition')}">קואליציה ${pct(y22[3])}</span></div>` : ''}
