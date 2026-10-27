@@ -235,6 +235,8 @@ body.live .sim-link { display: none; }
 body.results-on .results-legend { display: block; }
 body.results-on #legend:not(.results-legend), body.results-on #hint { display: none; }
 body.results-on .leaflet-overlay-pane { opacity: .3; }
+/* the results canvas stays in the map when switched off; hide it so taps reach the blocks */
+body:not(.results-on) .leaflet-results-pane { display: none; }
 .res-scale { display: flex; align-items: center; gap: 6px; margin: 6px 0 4px; font-size: .8rem; }
 .res-scale i { flex: 1; height: 10px; border-radius: 5px; margin: 0;
   background: linear-gradient(to left, rgb(29,78,216), rgb(229,231,235), rgb(185,28,28)); }
