@@ -244,7 +244,8 @@ body:not(.results-on) .leaflet-results-pane { display: none; }
 .res-mode { display: flex; margin: 6px 0 2px; border: 1px solid var(--muted); border-radius: 8px; overflow: hidden; }
 .res-mode button { flex: 1; border: 0; padding: 4px 6px; font: inherit; font-size: .8rem; background: transparent; color: inherit; cursor: pointer; }
 .res-mode button[aria-pressed="true"] { background: #1d4ed8; color: #fff; font-weight: 700; }
-.results-legend[data-mode="turnout"] .blocs-only, .results-legend:not([data-mode="turnout"]) .turnout-only { display: none; }
+.results-legend:not([data-mode="blocs"]) .blocs-only, .results-legend:not([data-mode="turnout"]) .turnout-only,
+.results-legend:not([data-mode="now"]) .now-only { display: none; }
 .res-scale.arab i { background: linear-gradient(to left, rgb(21,128,61), rgb(229,231,235), rgb(185,28,28)); }
 .results-legend small { color: var(--muted); font-size: .74rem; display: block; }
 .res-label { display: grid; place-items: center; pointer-events: none; color: #fff; font-weight: 800;

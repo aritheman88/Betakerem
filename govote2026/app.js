@@ -26,7 +26,7 @@ const ERRORS = {
 
 const SIM = Boolean(CFG.simulate);  // election-day demo: fake data, nothing is saved
 const DATA = CFG.dataBase || '';
-const GEO_VERSION = 7;  // bump when tools/build_blocks.py or build_results.py output changes, so browsers don't use stale blocks
+const GEO_VERSION = 8;  // bump when tools/build_blocks.py or build_results.py output changes, so browsers don't use stale blocks
 const params = new URLSearchParams(location.search);
 
 // ---------- backend: Supabase, or an in-memory stand-in for the simulation ----------
@@ -714,6 +714,76 @@ function turnoutColor(turnout) {
   return `rgb(${rgb.join(',')})`;
 }
 
+// ---------- today's turnout (election day 2026) ----------
+// neighbourhoods coloured by turnout so far relative to the national figure, from the elections committee's live
+// data (copied every 10 minutes by tools/fetch_turnout.py); the popup adds the neighbourhood's 2022 result
+const NOW = { shapes: null, data: null, polygons: [], timer: null };
+
+function nowColor(ratio) {
+  // red at 70% of the national turnout, amber at the national figure, green at 130%
+  const t = Math.max(-1, Math.min(1, (ratio - 1) / 0.3));
+  const mix = (a, b, k) => a.map((v, i) => Math.round(v + (b[i] - v) * k));
+  const rgb = t < 0 ? mix([234, 179, 8], [185, 28, 28], -t) : mix([234, 179, 8], [21, 128, 61], t);
+  return `rgb(${rgb.join(',')})`;
+}
+
+function nowPopup(shape) {
+  const [kalpis, eligible, voted, percent, updated, prev] = NOW.data.nbr[shape.id];
+  const national = NOW.data.total.percent;
+  const y22 = shape.y22;
+  const rows = (NOW.data.kalpi[shape.id] || []).map(([k, e, v, p, u]) =>
+    `<tr><td><bdi>${esc(k)}</bdi></td><td>${e}</td><td>${v}</td><td style="color:${nowColor(p / national)}">${p}%</td><td>${esc(u)}</td></tr>`).join('');
+  return `<div class="res-pop"><b>${esc(shape.name)}</b><div class="muted">${esc(shape.city)} · ${kalpis} קלפיות · נתוני ועדת הבחירות</div>
+    <div class="res-big"><span style="color:${nowColor(percent / national)}">הצבעה עד ${esc(updated)}: ${percent}%</span> · ארצי ${national}%</div>
+    <div class="muted">${voted.toLocaleString('he-IL')} מתוך ${eligible.toLocaleString('he-IL')} בעלי זכות${prev != null ? ` · בעדכון הקודם (${esc(NOW.data.previous_time || '')}): ${prev}%` : ''}</div>
+    ${y22 ? `<div class="muted" style="margin-top:4px">ב-2022 (מבני הקלפי בשכונה): הצבעה סופית ${pct(y22[4])} ·
+      <span style="color:${blocColor('liberal')}">ליברלים ${pct(y22[1])}</span> · <span style="color:${blocColor('arab')}">ערבי ${pct(y22[2])}</span> ·
+      <span style="color:${blocColor('coalition')}">קואליציה ${pct(y22[3])}</span></div>` : ''}
+    <table><tr><th>קלפי</th><th>בזב</th><th>הצביעו</th><th>%</th><th>עודכן</th></tr>${rows}</table></div>`;
+}
+
+function arcRing(indexes) {
+  const pts = [];
+  for (const i of indexes) {
+    const arc = i >= 0 ? NOW.shapes.arcs[i] : NOW.shapes.arcs[~i].slice().reverse();
+    pts.push(...(pts.length ? arc.slice(1) : arc));
+  }
+  return pts;
+}
+
+async function fetchNow() {
+  NOW.data = await fetch(`${DATA}turnout2026.json?t=${Date.now()}`).then(r => r.json());
+  const t = NOW.data.total;
+  document.getElementById('now-time').textContent =
+    `ארצי ${t.percent}% (${t['מצביעים'].toLocaleString('he-IL')} מצביעים), עדכון ${NOW.data.time.slice(0, 5)}`;
+}
+
+async function loadNow() {
+  [NOW.shapes] = await Promise.all([fetch(`${DATA}neighbourhoods2026.json?v=${GEO_VERSION}`).then(r => r.json()), fetchNow()]);
+  NOW.polygons = NOW.shapes.shapes.filter(shape => NOW.data.nbr[shape.id]).map(shape => {
+    const latlngs = shape.type === 'Polygon' ? shape.arcs.map(arcRing) : shape.arcs.map(p => p.map(arcRing));
+    const polygon = L.polygon(latlngs, { renderer: RESULTS.renderer, weight: 0.6, color: '#fff', fillOpacity: 0.75 });
+    polygon.shape = shape;
+    polygon.bindPopup(() => nowPopup(shape), {
+      maxWidth: Math.min(340, innerWidth - 50), maxHeight: Math.round(innerHeight * 0.5), autoPanPadding: [10, 10],
+    });
+    return polygon;
+  });
+}
+
+function styleNow() {
+  for (const polygon of NOW.polygons) {
+    const row = NOW.data.nbr[polygon.shape.id];
+    polygon.setStyle({ fillColor: row ? nowColor(row[3] / NOW.data.total.percent) : '#9ca3af' });
+  }
+}
+
+// while today's turnout is shown, check for a new update every 5 minutes
+function watchNow(on) {
+  clearInterval(NOW.timer);
+  NOW.timer = on ? setInterval(async () => { await fetchNow(); styleNow(); }, 5 * 60 * 1000) : null;
+}
+
 function resultsPopup(site) {
   const rows = site.boxes.map(b => `<tr class="${b.excluded ? 'excluded' : ''}">
       <td><bdi>${esc(b.kalpi)}</bdi></td><td>${b.valid}</td><td style="color:${turnoutColor(b.voted / b.registered)}">${pct(b.voted / b.registered)}</td>
@@ -754,6 +824,7 @@ function sizeResults() {
 
 function labelResults() {
   RESULTS.labels.clearLayers();
+  if (RESULTS.mode === 'now') return;
   const view = map.getBounds().pad(0.1);
   let n = 0;
   for (const site of RESULTS.sites) {
@@ -767,9 +838,23 @@ function labelResults() {
   }
 }
 
-function drawResults() {
+async function drawResults() {
   const turnout = RESULTS.mode === 'turnout';
   for (const circle of RESULTS.circles || []) RESULTS.layer.removeLayer(circle);
+  for (const polygon of NOW.polygons) RESULTS.layer.removeLayer(polygon);
+  watchNow(false);
+  document.getElementById('results-legend').dataset.mode = RESULTS.mode;
+  for (const btn of document.querySelectorAll('#results-mode button')) btn.setAttribute('aria-pressed', btn.dataset.mode === RESULTS.mode);
+  if (RESULTS.mode === 'now') {
+    if (!NOW.shapes) await loadNow(); else await fetchNow();
+    if (RESULTS.mode !== 'now') return;  // switched away while loading
+    styleNow();
+    for (const polygon of NOW.polygons) polygon.addTo(RESULTS.layer);
+    RESULTS.circles = [];
+    labelResults();
+    watchNow(RESULTS.on);
+    return;
+  }
   RESULTS.circles = RESULTS.sites.map(site => {
     const circle = L.circleMarker([site.lat, site.lon], {
       renderer: RESULTS.renderer, radius: resRadius(site), fillOpacity: 1,
@@ -784,8 +869,6 @@ function drawResults() {
     return circle.addTo(RESULTS.layer);
   });
   labelResults();
-  document.getElementById('results-legend').dataset.mode = RESULTS.mode;
-  for (const btn of document.querySelectorAll('#results-mode button')) btn.setAttribute('aria-pressed', btn.dataset.mode === RESULTS.mode);
 }
 
 async function toggleResults() {
@@ -799,7 +882,9 @@ async function toggleResults() {
     map.setMinZoom(7);
     map.fitBounds(RESULTS.bounds, { padding: [10, 10] });
     sizeResults();
+    if (RESULTS.mode === 'now') { fetchNow().then(styleNow); watchNow(true); }
   } else {
+    watchNow(false);
     RESULTS.layer.remove();
     map.setMinZoom(13);
     map.fitBounds(state.home, { padding: [8, 8] });
