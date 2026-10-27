@@ -731,7 +731,9 @@ async function loadResults() {
   const data = await fetch(`${DATA}results2022.json?v=${GEO_VERSION}`).then(r => r.json());
   // Beit HaKerem last, so its circles are drawn on top
   RESULTS.sites = data.sites.filter(site => site.valid).sort((a, b) => a.beit_hakerem - b.beit_hakerem);
-  RESULTS.renderer = L.canvas({ padding: 0.3 });
+  // own pane: the block layer (overlay pane) is faded while the results are shown
+  map.createPane('results').style.zIndex = 450;
+  RESULTS.renderer = L.canvas({ padding: 0.3, pane: 'results' });
   RESULTS.layer = L.layerGroup();
   RESULTS.labels = L.layerGroup().addTo(RESULTS.layer);
   RESULTS.bounds = L.latLngBounds(data.sites.filter(site => site.locality === 'ירושלים').map(site => [site.lat, site.lon]));
