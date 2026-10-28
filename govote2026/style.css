@@ -230,7 +230,7 @@ body.live .sim-link { display: none; }
 .sim-banner a { color: #fff; }
 
 /* ---------- 2022 results layer ---------- */
-#results-btn[aria-pressed="true"] { background: var(--brand); color: var(--card); border-color: var(--brand); }
+.results-btn[aria-pressed="true"] { background: var(--brand); color: var(--card); border-color: var(--brand); }
 .results-legend { display: none; top: auto; bottom: 34px; right: 10px; max-width: 250px; line-height: 1.45; }
 body.results-on .results-legend { display: block; }
 body.results-on #legend:not(.results-legend), body.results-on #hint { display: none; }
@@ -246,6 +246,8 @@ body:not(.results-on) .leaflet-results-pane { display: none; }
 .res-mode button[aria-pressed="true"] { background: #1d4ed8; color: #fff; font-weight: 700; }
 .results-legend:not([data-mode="blocs"]) .blocs-only, .results-legend:not([data-mode="turnout"]) .turnout-only,
 .results-legend:not([data-mode="now"]) .now-only { display: none; }
+.results-legend:not([data-year="2022"]) .y2022-only, .results-legend:not([data-year="2026"]) .y2026-only { display: none; }
+.res-year button[aria-pressed="true"] { background: #111827; }
 .res-scale.arab i { background: linear-gradient(to right, rgb(21,128,61), rgb(229,231,235), rgb(185,28,28)); }
 .results-legend small { color: var(--muted); font-size: .74rem; display: block; }
 .res-label { display: grid; place-items: center; pointer-events: none; color: #fff; font-weight: 800;

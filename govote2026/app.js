@@ -26,7 +26,7 @@ const ERRORS = {
 
 const SIM = Boolean(CFG.simulate);  // election-day demo: fake data, nothing is saved
 const DATA = CFG.dataBase || '';
-const GEO_VERSION = 8;  // bump when tools/build_blocks.py or build_results.py output changes, so browsers don't use stale blocks
+const GEO_VERSION = 9;  // bump when tools/build_blocks.py or build_results.py output changes, so browsers don't use stale blocks
 const params = new URLSearchParams(location.search);
 
 // ---------- backend: Supabase, or an in-memory stand-in for the simulation ----------
@@ -689,7 +689,8 @@ map.addControl(new LocateControl());
 // the non-coalition side is blue where the liberal bloc leads and green where the Arab bloc does
 // or, in turnout mode, by the share of registered voters who voted (red low, green high)
 // ~4,000 buildings: circles are drawn on a canvas, shrink as the map zooms out, and carry their % only when big
-const RESULTS = { layer: null, on: false, mode: 'blocs' };
+// year: 2022, or the partial 2026 count; switching keeps the map view so the two can be compared
+const RESULTS = { layer: null, on: false, mode: 'blocs', year: '2022', byYear: {} };
 const RES_LABEL_MIN = 26;  // px diameter from which a circle shows its %
 const RES_LABEL_MAX = 400; // labels drawn at most, so a wide view stays fast
 const pct = x => `${Math.round(100 * x)}%`;
@@ -791,16 +792,38 @@ function resultsPopup(site) {
       <td style="color:${blocColor('coalition')}">${pct(b.coalition / b.valid)}</td></tr>
       ${b.excluded ? `<tr class="excluded"><td colspan="6">${esc(b.excluded)} – לא נכללה בצבע</td></tr>` : ''}`).join('');
   const where = site.beit_hakerem ? 'בית הכרם'
-    : site.locality === 'ירושלים' ? `${esc(site.neighbourhood)} (שיוך משוער)` : esc(site.locality);
+    : site.locality === 'ירושלים' && RESULTS.year === '2022' ? `${esc(site.neighbourhood)} (שיוך משוער)`
+    : site.neighbourhood && site.locality !== site.neighbourhood ? `${esc(site.neighbourhood)}, ${esc(site.locality)}` : esc(site.locality);
+  // 2026: the same building's 2022 result, for comparison
+  const y22 = site.y22 ? `<div class="muted" style="margin-top:4px">באותו מבנה ב-2022: <span style="color:${blocColor('liberal')}">ליברלים ${pct(site.y22[0])}</span> ·
+      <span style="color:${blocColor('arab')}">ערבי ${pct(site.y22[1])}</span> · <span style="color:${blocColor('coalition')}">קואליציה ${pct(site.y22[2])}</span> · הצבעה ${pct(site.y22[3])}</div>` : '';
   return `<div class="res-pop"><b>${esc(site.label)}</b><div class="muted">${site.address ? `${esc(site.address)} · ` : ''}${where}<br>${site.valid.toLocaleString('he-IL')} קולות כשרים<br><span style="color:${turnoutColor(site.turnout)}">הצבעה ${pct(site.turnout)}</span> מתוך ${site.registered.toLocaleString('he-IL')} בעלי זכות${site.approx ? ' · המיקום על המפה משוער' : ''}</div>
-    <div class="res-big"><span style="color:${blocColor('liberal')}">ליברלים ${pct(site.liberal_share)}</span> · <span style="color:${blocColor('arab')}">גוש ערבי ${pct(site.arab_share)}</span> · <span style="color:${blocColor('coalition')}">קואליציה ${pct(site.coalition_share)}</span></div>
+    <div class="res-big"><span style="color:${blocColor('liberal')}">ליברלים ${pct(site.liberal_share)}</span> · <span style="color:${blocColor('arab')}">גוש ערבי ${pct(site.arab_share)}</span> · <span style="color:${blocColor('coalition')}">קואליציה ${pct(site.coalition_share)}</span></div>${y22}
     <table><tr><th>קלפי</th><th>כשרים</th><th>הצבעה</th><th>ליברלים</th><th>ערבי</th><th>קואליציה</th></tr>${rows}</table></div>`;
 }
 
+async function loadYear(year) {
+  if (!RESULTS.byYear[year]) {
+    const data = await fetch(`${DATA}results${year}.json?v=${GEO_VERSION}`).then(r => r.json());
+    // Beit HaKerem last, so its circles are drawn on top
+    data.sites = data.sites.filter(site => site.valid).sort((a, b) => a.beit_hakerem - b.beit_hakerem);
+    RESULTS.byYear[year] = data;
+    if (data.counted) {
+      document.getElementById('res-counted').textContent =
+        `${data.counted.toLocaleString('he-IL')} מתוך ${data.total.toLocaleString('he-IL')} קלפיות נספרו`;
+    }
+  }
+  RESULTS.year = year;
+  RESULTS.sites = RESULTS.byYear[year].sites;
+  const legend = document.getElementById('results-legend');
+  legend.dataset.year = year;
+  legend.querySelector('.legend-head b').textContent = `בחירות ${year}`;
+  for (const btn of document.querySelectorAll('#results-year button')) btn.setAttribute('aria-pressed', btn.dataset.year === year);
+  return RESULTS.byYear[year];
+}
+
 async function loadResults() {
-  const data = await fetch(`${DATA}results2022.json?v=${GEO_VERSION}`).then(r => r.json());
-  // Beit HaKerem last, so its circles are drawn on top
-  RESULTS.sites = data.sites.filter(site => site.valid).sort((a, b) => a.beit_hakerem - b.beit_hakerem);
+  const data = await loadYear(RESULTS.year);
   // own pane: the block layer (overlay pane) is faded while the results are shown
   map.createPane('results').style.zIndex = 450;
   RESULTS.renderer = L.canvas({ padding: 0.3, pane: 'results' });
@@ -891,9 +914,31 @@ async function toggleResults() {
     map.setMaxBounds(state.home.pad(0.6));
   }
   document.body.classList.toggle('results-on', RESULTS.on);
-  document.getElementById('results-btn').setAttribute('aria-pressed', RESULTS.on);
+  pressResultsButtons();
 }
-document.getElementById('results-btn').addEventListener('click', toggleResults);
+function pressResultsButtons() {
+  for (const btn of document.querySelectorAll('.results-btn')) btn.setAttribute('aria-pressed', RESULTS.on && btn.dataset.year === RESULTS.year);
+}
+// switch year without moving the map; "today's turnout" has no year, so it moves to the blocs
+async function showYear(year) {
+  await loadYear(year);
+  if (RESULTS.mode === 'now') RESULTS.mode = 'blocs';
+  pressResultsButtons();
+  if (RESULTS.layer) drawResults();
+}
+// toolbar: open the results in that year, switch to it, or close them when it is already shown
+for (const btn of document.querySelectorAll('.results-btn')) {
+  btn.addEventListener('click', async () => {
+    if (RESULTS.on && RESULTS.year === btn.dataset.year) return toggleResults();
+    if (!RESULTS.on) {
+      await loadYear(btn.dataset.year);
+      if (RESULTS.layer) drawResults();
+      return toggleResults();
+    }
+    showYear(btn.dataset.year);
+  });
+}
+for (const btn of document.querySelectorAll('#results-year button')) btn.addEventListener('click', () => showYear(btn.dataset.year));
 for (const btn of document.querySelectorAll('#results-mode button')) {
   btn.addEventListener('click', () => { RESULTS.mode = btn.dataset.mode; if (RESULTS.layer) drawResults(); });
 }

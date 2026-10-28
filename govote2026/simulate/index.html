@@ -13,7 +13,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-  <link rel="stylesheet" href="../style.css?v=13">
+  <link rel="stylesheet" href="../style.css?v=14">
 </head>
 <body>
   <div class="sim-banner">סימולציה של יום הבחירות – הנתונים מומצאים ושום דבר לא נשמר. <a href="../">למפה האמיתית</a></div>
@@ -46,7 +46,8 @@
     <input id="search" list="streets" type="search" placeholder="חיפוש רחוב…" autocomplete="off" aria-label="חיפוש רחוב">
     <datalist id="streets"></datalist>
     <button id="mine-btn" class="btn ghost" type="button" hidden>הבלוקים שלי</button>
-    <button id="results-btn" class="btn ghost" type="button" aria-pressed="false">תוצאות 2022</button>
+    <button id="results-btn" class="btn ghost results-btn" type="button" data-year="2022" aria-pressed="false">תוצאות 2022</button>
+    <button id="results26-btn" class="btn ghost results-btn" type="button" data-year="2026" aria-pressed="false">תוצאות 2026</button>
   </div>
 
   <main class="map-wrap">
@@ -58,10 +59,14 @@
       <div class="live-only"><i class="prog"></i>בסיבוב</div>
       <div class="live-only"><i class="done"></i>הושלם</div>
     </div>
-    <div class="legend results-legend" id="results-legend" data-mode="blocs">
+    <div class="legend results-legend" id="results-legend" data-mode="blocs" data-year="2022">
       <button class="legend-head" type="button" data-collapse="results-legend" aria-expanded="true"><b>בחירות 2022</b> <span class="chev"></span></button>
+      <div class="res-mode res-year" id="results-year" role="group" aria-label="איזו שנה">
+        <button type="button" data-year="2022" aria-pressed="true">2022</button><button type="button" data-year="2026" aria-pressed="false">2026 (חלקי)</button>
+      </div>
+      <small class="y2026-only">תוצאות חלקיות: <span id="res-counted"></span>, לפי קובץ ועדת הבחירות.</small>
       <div class="res-mode" id="results-mode" role="group" aria-label="מה להציג">
-        <button type="button" data-mode="blocs" aria-pressed="true">גושים</button><button type="button" data-mode="turnout" aria-pressed="false">הצבעה 2022</button><button type="button" data-mode="now" aria-pressed="false">הצבעה היום</button>
+        <button type="button" data-mode="blocs" aria-pressed="true">גושים</button><button type="button" data-mode="turnout" aria-pressed="false">שיעור הצבעה</button><button type="button" data-mode="now" aria-pressed="false">הצבעה היום</button>
       </div>
       <div class="blocs-only">
         <div class="res-scale"><span>קואליציה</span><i></i><span>ליברלים + גוש ערבי</span></div>
@@ -69,14 +74,14 @@
       </div>
       <div class="turnout-only">
         <div class="res-scale turnout"><span>40%</span><i></i><span>80%</span></div>
-        <small>מצביעים מתוך בעלי זכות הצבעה (בזב) בקלפי, בלי מעטפות כפולות. ממוצע ארצי: 64%, ירושלים: 62%.</small>
+        <small>מצביעים מתוך בעלי זכות הצבעה (בזב) בקלפי, בלי מעטפות כפולות. <span class="y2022-only">ממוצע ארצי: 64%, ירושלים: 62%.</span><span class="y2026-only">בקלפיות שנספרו: 71%.</span></small>
       </div>
       <div class="now-only">
         <div class="res-scale turnout"><span>70%</span><i></i><span>130%</span></div>
         <small>שיעור ההצבעה בשכונה עד עכשיו, ביחס לארצי. נתוני ועדת הבחירות, מתעדכן כל שעתיים בערך. <span id="now-time"></span></small>
       </div>
       <details class="res-about"><summary>הסבר</summary>
-      <small>עיגול לכל מבנה קלפי בישראל (בלי מעטפות חיצוניות), גודלו לפי מספר המצביעים; הרחיקו את המפה כדי לראות את כל הארץ; עיגולי בית הכרם מסומנים במסגרת כהה; האחוז בעיגול הוא ליברלים + גוש ערבי, או שיעור ההצבעה. ליברלים: יש עתיד, המחנה הממלכתי, העבודה, מרצ, ישראל ביתנו. גוש ערבי: חד"ש-תע"ל, רע"ם, בל"ד. קואליציה: הליכוד, ש"ס, יהדות התורה, הציונות הדתית. לחצו על עיגול לפירוט.</small>
+      <small>עיגול לכל מבנה קלפי בישראל (בלי מעטפות חיצוניות), גודלו לפי מספר המצביעים; הרחיקו את המפה כדי לראות את כל הארץ; עיגולי בית הכרם מסומנים במסגרת כהה; האחוז בעיגול הוא ליברלים + גוש ערבי, או שיעור ההצבעה. <span class="y2022-only">ליברלים: יש עתיד, המחנה הממלכתי, העבודה, מרצ, ישראל ביתנו. גוש ערבי: חד"ש-תע"ל, רע"ם, בל"ד. קואליציה: הליכוד, ש"ס, יהדות התורה, הציונות הדתית.</span><span class="y2026-only">ליברלים: ביחד, ישר, הדמוקרטים, ישראל ביתנו. גוש ערבי: הרשימה המשותפת, רע"ם. קואליציה: הליכוד, ש"ס, יהדות התורה, הציונות הדתית, עוצמה יהודית, נעם. השאר (בהם המילואימניקים) מחוץ לגושים. בקובץ 2026 אין כתובות: קלפי מוצבת במבנה של 2022 עם אותו מספר, ואם אין כזה בשכונה – במרכז השכונה (מיקום משוער).</span> לחצו על עיגול לפירוט.</small>
       </details>
     </div>
     <div class="hint" id="hint">לחצו על בלוק: "מתחיל סיבוב" ← צהוב, כתובת שסיימתם ← בניין ירוק, "סיימתי" ← הכול ירוק</div>
@@ -95,6 +100,6 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="../config.js?v=3"></script>
   <script>Object.assign(window.GOVOTE_CONFIG, { simulate: true, dataBase: '../' });</script>
-  <script src="../app.js?v=18"></script>
+  <script src="../app.js?v=19"></script>
 </body>
 </html>
