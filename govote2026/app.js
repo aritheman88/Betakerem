@@ -26,7 +26,7 @@ const ERRORS = {
 
 const SIM = Boolean(CFG.simulate);  // election-day demo: fake data, nothing is saved
 const DATA = CFG.dataBase || '';
-const GEO_VERSION = 9;  // bump when tools/build_blocks.py or build_results.py output changes, so browsers don't use stale blocks
+const GEO_VERSION = 10;  // bump when tools/build_blocks.py or build_results.py output changes, so browsers don't use stale blocks
 const params = new URLSearchParams(location.search);
 
 // ---------- backend: Supabase, or an in-memory stand-in for the simulation ----------
@@ -694,7 +694,8 @@ const RESULTS = { layer: null, on: false, mode: 'blocs', year: '2022', byYear: {
 const RES_LABEL_MIN = 26;  // px diameter from which a circle shows its %
 const RES_LABEL_MAX = 400; // labels drawn at most, so a wide view stays fast
 const pct = x => `${Math.round(100 * x)}%`;
-const BLOC_RGB = { coalition: [185, 28, 28], liberal: [29, 78, 216], arab: [21, 128, 61] };
+// unaligned: 2026 only (the Reservists); shown in the popups, not in the circle's colour
+const BLOC_RGB = { coalition: [185, 28, 28], liberal: [29, 78, 216], arab: [21, 128, 61], unaligned: [107, 114, 128] };
 
 function shareColor(opposition, arabLeads = false) {
   // red at <=25% liberal + Arab, light grey at 50%, blue (or green) at >=75%
@@ -786,11 +787,12 @@ function watchNow(on) {
 }
 
 function resultsPopup(site) {
+  const four = site.unaligned_share != null;
   const rows = site.boxes.map(b => `<tr class="${b.excluded ? 'excluded' : ''}">
       <td><bdi>${esc(b.kalpi)}</bdi></td><td>${b.valid}</td><td style="color:${turnoutColor(b.voted / b.registered)}">${pct(b.voted / b.registered)}</td>
       <td style="color:${blocColor('liberal')}">${pct(b.liberal / b.valid)}</td><td style="color:${blocColor('arab')}">${pct(b.arab / b.valid)}</td>
-      <td style="color:${blocColor('coalition')}">${pct(b.coalition / b.valid)}</td></tr>
-      ${b.excluded ? `<tr class="excluded"><td colspan="6">${esc(b.excluded)} – לא נכללה בצבע</td></tr>` : ''}`).join('');
+      <td style="color:${blocColor('coalition')}">${pct(b.coalition / b.valid)}</td>${four ? `<td style="color:${blocColor('unaligned')}">${pct(b.unaligned / b.valid)}</td>` : ''}</tr>
+      ${b.excluded ? `<tr class="excluded"><td colspan="${four ? 7 : 6}">${esc(b.excluded)} – לא נכללה בצבע</td></tr>` : ''}`).join('');
   const where = site.beit_hakerem ? 'בית הכרם'
     : site.locality === 'ירושלים' && RESULTS.year === '2022' ? `${esc(site.neighbourhood)} (שיוך משוער)`
     : site.neighbourhood && site.locality !== site.neighbourhood ? `${esc(site.neighbourhood)}, ${esc(site.locality)}` : esc(site.locality);
@@ -798,8 +800,8 @@ function resultsPopup(site) {
   const y22 = site.y22 ? `<div class="muted" style="margin-top:4px">באותו מבנה ב-2022: <span style="color:${blocColor('liberal')}">ליברלים ${pct(site.y22[0])}</span> ·
       <span style="color:${blocColor('arab')}">ערבי ${pct(site.y22[1])}</span> · <span style="color:${blocColor('coalition')}">קואליציה ${pct(site.y22[2])}</span> · הצבעה ${pct(site.y22[3])}</div>` : '';
   return `<div class="res-pop"><b>${esc(site.label)}</b><div class="muted">${site.address ? `${esc(site.address)} · ` : ''}${where}<br>${site.valid.toLocaleString('he-IL')} קולות כשרים<br><span style="color:${turnoutColor(site.turnout)}">הצבעה ${pct(site.turnout)}</span> מתוך ${site.registered.toLocaleString('he-IL')} בעלי זכות${site.approx ? ' · המיקום על המפה משוער' : ''}</div>
-    <div class="res-big"><span style="color:${blocColor('liberal')}">ליברלים ${pct(site.liberal_share)}</span> · <span style="color:${blocColor('arab')}">גוש ערבי ${pct(site.arab_share)}</span> · <span style="color:${blocColor('coalition')}">קואליציה ${pct(site.coalition_share)}</span></div>${y22}
-    <table><tr><th>קלפי</th><th>כשרים</th><th>הצבעה</th><th>ליברלים</th><th>ערבי</th><th>קואליציה</th></tr>${rows}</table></div>`;
+    <div class="res-big"><span style="color:${blocColor('liberal')}">ליברלים ${pct(site.liberal_share)}</span> · <span style="color:${blocColor('arab')}">גוש ערבי ${pct(site.arab_share)}</span> · <span style="color:${blocColor('coalition')}">קואליציה ${pct(site.coalition_share)}</span>${four ? ` · <span style="color:${blocColor('unaligned')}">לא מזוהים ${pct(site.unaligned_share)}</span>` : ''}</div>${y22}
+    <table><tr><th>קלפי</th><th>כשרים</th><th>הצבעה</th><th>ליברלים</th><th>ערבי</th><th>קואליציה</th>${four ? '<th>לא מזוהים</th>' : ''}</tr>${rows}</table></div>`;
 }
 
 async function loadYear(year) {
@@ -810,7 +812,7 @@ async function loadYear(year) {
     RESULTS.byYear[year] = data;
     if (data.counted) {
       document.getElementById('res-counted').textContent =
-        `${data.counted.toLocaleString('he-IL')} מתוך ${data.total.toLocaleString('he-IL')} קלפיות נספרו`;
+        `${data.counted.toLocaleString('he-IL')} מתוך ${data.total.toLocaleString('he-IL')} קלפיות נספרו (עדכון ${data.time})`;
     }
   }
   RESULTS.year = year;

@@ -1,8 +1,9 @@
 """Build the 2026 election-results layer for the govote2026 map, in the same format as results2022.json.
 
 Sources:
-    tools/data/2026_results_partial.csv   Knesset 26 results per ballot box (Central Elections Committee export
-                                          "expb", partial count: only the ballot boxes counted so far)
+    tools/data/2026_results_<HHMM>.csv    Knesset 26 results per ballot box (Central Elections Committee export
+                                          "expb", partial count: only the ballot boxes counted so far), one file per
+                                          download; all are merged, the latest file winning for a box in several
     tools/cache/kalpi_data.json           the committee's turnout map: "<locality code>|<ballot box>" -> neighbourhood id
                                           (downloaded when missing; delete it to refresh)
     govote2026/neighbourhoods2026.json    neighbourhood shapes (tools/build_neighbourhoods.py)
@@ -28,7 +29,7 @@ from build_neighbourhoods import inside, ring_of  # noqa: E402
 
 # ---- settings ----
 REPO = Path(__file__).resolve().parent.parent
-SOURCE = REPO / 'tools' / 'data' / '2026_results_partial.csv'
+SOURCES = sorted((REPO / 'tools' / 'data').glob('2026_results_[0-9][0-9][0-9][0-9].csv'))
 KALPI_URL = 'https://mapvotes.bechirot.gov.il/data/votes/latest/kalpi_data.json'
 KALPI_CACHE = REPO / 'tools' / 'cache' / 'kalpi_data.json'
 SHAPES = REPO / 'govote2026' / 'neighbourhoods2026.json'
@@ -39,9 +40,11 @@ BEIT_HAKEREM_NBR = 1105
 # as in 2022 (build_results.py): Haredi polling stations at the Ziv campus, left out of the colour
 EXCLUDED = {267: 'קלפי חרדית – מצביעיה כנראה גרים מחוץ לשכונה', 286: 'קלפי חרדית – מצביעיה כנראה גרים מחוץ לשכונה'}
 
-COALITION = ['מחל', 'שס', 'ג', 'ט', 'ב', 'ני']  # Likud, Shas, UTJ, Religious Zionism, Otzma Yehudit, Noam
+# Likud, Shas, UTJ, Religious Zionism, Otzma Yehudit, Noam, Amcha Yisrael (Ofer Winter), Black Flag
+COALITION = ['מחל', 'שס', 'ג', 'ט', 'ב', 'ני', 'ך', 'נר']
 LIBERAL = ['רק', 'דרך', 'אמת', 'ל']              # Together (Bennett), Yashar (Eisenkot), the Democrats, Yisrael Beiteinu
 ARAB = ['ודם', 'עם']                              # the Joint List, Ra'am
+UNALIGNED = ['די']                                # the Reservists (Zelicha)
 
 
 def polygons_of(shape, arcs):
@@ -86,13 +89,15 @@ def entry(label, address, neighbourhood, locality, pos, boxes, beit_hakerem=Fals
         'boxes': sorted(boxes, key=lambda b: float(b['kalpi'])), 'valid': valid, 'registered': registered,
         'turnout': round(sum(b['voted'] for b in kept) / registered, 4) if registered else None,
         'liberal_share': share('liberal'), 'arab_share': share('arab'), 'coalition_share': share('coalition'),
+        'unaligned_share': share('unaligned'),
         'y22': y22,
     }
 
 
 def main():
-    d = pd.read_csv(SOURCE, encoding='utf-8-sig')
+    d = pd.concat([pd.read_csv(f, encoding='utf-8-sig') for f in SOURCES])
     d = d.loc[:, ~d.columns.str.startswith('Unnamed')]
+    d = d.drop_duplicates(['סמל ישוב', 'קלפי'], keep='last')
     d = d[d['סמל ישוב'] != ENVELOPES]
     if not KALPI_CACHE.exists():
         KALPI_CACHE.parent.mkdir(exist_ok=True)
@@ -103,18 +108,19 @@ def main():
     shapes = {s['id']: (s, polygons_of(s, topo['arcs'])) for s in topo['shapes']}
 
     # 2022 buildings by (locality, polling-station number)
-    old = {}
+    old, towns = {}, {}
     for site in json.load(open(RESULTS_2022, encoding='utf-8'))['sites']:
+        towns.setdefault(site['locality'], []).append((site['lat'], site['lon']))
         for b in site['boxes']:
             old.setdefault((site['locality'], int(float(b['kalpi']))), site)
 
-    buildings, areas, unplaced = {}, {}, []
+    buildings, areas, in_town, unplaced = {}, {}, {}, []
     for _, r in d.iterrows():
         kalpi = f'{float(r["קלפי"]):g}'
         locality = str(r['שם ישוב']).strip()
         box = {'kalpi': kalpi, 'valid': int(r['כשרים']), 'registered': int(r['בזב']), 'voted': int(r['מצביעים']),
                'coalition': int(r[COALITION].sum()), 'liberal': int(r[LIBERAL].sum()), 'arab': int(r[ARAB].sum()),
-               'excluded': None}
+               'unaligned': int(r[UNALIGNED].sum()), 'excluded': None}
         nbr = nbr_of.get(f'{r["סמל ישוב"]}|{kalpi}')
         shape = shapes.get(nbr)
         site = old.get((locality, int(float(kalpi))))
@@ -122,6 +128,8 @@ def main():
             buildings.setdefault(id(site), (site, []))[1].append(box)
         elif shape:
             areas.setdefault(nbr, (shape, locality, []))[2].append(box)
+        elif locality in towns:  # no neighbourhood in the committee's data: the middle of the town's 2022 buildings
+            in_town.setdefault(locality, []).append(box)
         else:
             unplaced.append((locality, kalpi, box['valid']))
 
@@ -134,22 +142,27 @@ def main():
         sites.append(entry(f'קלפיות בשכונה {shape["name"]}' if shape['name'] else f'קלפיות ב{locality}', None,
                            shape['name'], locality, centre(polygons), boxes,
                            nbr == BEIT_HAKEREM_NBR, True))
+    for locality, boxes in in_town.items():
+        points = towns[locality]
+        pos = sum(p[0] for p in points) / len(points), sum(p[1] for p in points) / len(points)
+        sites.append(entry(f'קלפיות ב{locality}', None, None, locality, pos, boxes, approx=True))
     sites = [s for s in sites if s['valid']]
 
     counted, total = len(d), len(nbr_of) - sum(k.startswith(f'{ENVELOPES}|') for k in nbr_of)
-    OUT.write_text(json.dumps({'counted': counted, 'total': total, 'sites': sites}, ensure_ascii=False,
+    time = f'{SOURCES[-1].stem[-4:-2]}:{SOURCES[-1].stem[-2:]}'
+    OUT.write_text(json.dumps({'counted': counted, 'total': total, 'time': time, 'sites': sites}, ensure_ascii=False,
                               separators=(',', ':')), encoding='utf-8')
     boxes = [b for s in sites for b in s['boxes'] if not b['excluded']]
     valid = sum(b['valid'] for b in boxes)
     print(f'{counted} of {total} ballot boxes counted; left out, no neighbourhood: {unplaced}')
     print(f'{len(buildings)} 2022 buildings ({sum(len(b) for _, b in buildings.values())} boxes), '
           f'{len(areas)} neighbourhood groups ({sum(len(a[2]) for a in areas.values())} boxes)')
-    for bloc in ['liberal', 'arab', 'coalition']:
+    for bloc in ['liberal', 'arab', 'coalition', 'unaligned']:
         print(f'{bloc} share: {sum(b[bloc] for b in boxes) / valid:.1%}')
     print(f'turnout: {sum(b["voted"] for b in boxes) / sum(b["registered"] for b in boxes):.1%}')
     bhk = [s for s in sites if s['beit_hakerem']]
     print('בית הכרם:', [(s['label'], [b['kalpi'] for b in s['boxes']], s['liberal_share']) for s in bhk])
-    for bloc in ['liberal', 'arab', 'coalition']:
+    for bloc in ['liberal', 'arab', 'coalition', 'unaligned']:
         print(f'  {bloc}: {sum(s[bloc + "_share"] * s["valid"] for s in bhk) / sum(s["valid"] for s in bhk):.1%}')
     print(f'-> {OUT.name} ({OUT.stat().st_size // 1024} KB)')
 
