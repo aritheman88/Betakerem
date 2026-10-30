@@ -63,9 +63,9 @@
     <div class="legend results-legend" id="results-legend" data-mode="blocs" data-year="2022">
       <button class="legend-head" type="button" data-collapse="results-legend" aria-expanded="true"><b>בחירות 2022</b> <span class="chev"></span></button>
       <div class="res-mode res-year" id="results-year" role="group" aria-label="איזו שנה">
-        <button type="button" data-year="2022" aria-pressed="true">2022</button><button type="button" data-year="2026" aria-pressed="false">2026 (חלקי)</button>
+        <button type="button" data-year="2022" aria-pressed="true">2022</button><button type="button" data-year="2026" aria-pressed="false">2026</button>
       </div>
-      <small class="y2026-only">תוצאות חלקיות: <span id="res-counted"></span>, לפי קובץ ועדת הבחירות.</small>
+      <small class="y2026-only">תוצאות סופיות: <span id="res-counted"></span>, לפי קובץ ועדת הבחירות.</small>
       <div class="res-mode" id="results-mode" role="group" aria-label="מה להציג">
         <button type="button" data-mode="blocs" aria-pressed="true">גושים</button><button type="button" data-mode="turnout" aria-pressed="false">שיעור הצבעה</button><button type="button" data-mode="now" aria-pressed="false">הצבעה היום</button>
       </div>
@@ -75,7 +75,7 @@
       </div>
       <div class="turnout-only">
         <div class="res-scale turnout"><span>40%</span><i></i><span>80%</span></div>
-        <small>מצביעים מתוך בעלי זכות הצבעה (בזב) בקלפי, בלי מעטפות כפולות. <span class="y2022-only">ממוצע ארצי: 64%, ירושלים: 62%.</span><span class="y2026-only">בקלפיות שנספרו: 72%.</span></small>
+        <small>מצביעים מתוך בעלי זכות הצבעה (בזב) בקלפי, בלי מעטפות כפולות. <span class="y2022-only">ממוצע ארצי: 64%, ירושלים: 62%.</span><span class="y2026-only">ממוצע ארצי: 72%.</span></small>
       </div>
       <div class="now-only">
         <div class="res-scale turnout"><span>70%</span><i></i><span>130%</span></div>
@@ -101,6 +101,6 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
   <script src="config.js?v=3"></script>
-  <script src="app.js?v=20"></script>
+  <script src="app.js?v=21"></script>
 </body>
 </html>

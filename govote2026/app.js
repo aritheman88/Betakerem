@@ -26,7 +26,7 @@ const ERRORS = {
 
 const SIM = Boolean(CFG.simulate);  // election-day demo: fake data, nothing is saved
 const DATA = CFG.dataBase || '';
-const GEO_VERSION = 10;  // bump when tools/build_blocks.py or build_results.py output changes, so browsers don't use stale blocks
+const GEO_VERSION = 11;  // bump when tools/build_blocks.py or build_results.py output changes, so browsers don't use stale blocks
 const params = new URLSearchParams(location.search);
 
 // ---------- backend: Supabase, or an in-memory stand-in for the simulation ----------
@@ -689,7 +689,7 @@ map.addControl(new LocateControl());
 // the non-coalition side is blue where the liberal bloc leads and green where the Arab bloc does
 // or, in turnout mode, by the share of registered voters who voted (red low, green high)
 // ~4,000 buildings: circles are drawn on a canvas, shrink as the map zooms out, and carry their % only when big
-// year: 2022, or the partial 2026 count; switching keeps the map view so the two can be compared
+// year: 2022 or 2026; switching keeps the map view so the two can be compared
 const RESULTS = { layer: null, on: false, mode: 'blocs', year: '2022', byYear: {} };
 const RES_LABEL_MIN = 26;  // px diameter from which a circle shows its %
 const RES_LABEL_MAX = 400; // labels drawn at most, so a wide view stays fast
@@ -812,7 +812,8 @@ async function loadYear(year) {
     RESULTS.byYear[year] = data;
     if (data.counted) {
       document.getElementById('res-counted').textContent =
-        `${data.counted.toLocaleString('he-IL')} מתוך ${data.total.toLocaleString('he-IL')} קלפיות נספרו (עדכון ${data.time})`;
+        data.final ? `${data.counted.toLocaleString('he-IL')} קלפיות`
+          : `${data.counted.toLocaleString('he-IL')} מתוך ${data.total.toLocaleString('he-IL')} קלפיות נספרו (עדכון ${data.time})`;
     }
   }
   RESULTS.year = year;

@@ -1,8 +1,9 @@
 """Build the 2026 election-results layer for the govote2026 map, in the same format as results2022.json.
 
 Sources:
-    tools/data/2026_results_<HHMM>.csv    Knesset 26 results per ballot box (Central Elections Committee export
-                                          "expb", partial count: only the ballot boxes counted so far), one file per
+    tools/data/2026_results_final.csv     Knesset 26 final results per ballot box (Central Elections Committee export
+                                          "expb"); when present it is used alone
+    tools/data/2026_results_<HHMM>.csv    otherwise: partial counts (only the ballot boxes counted so far), one file per
                                           download; all are merged, the latest file winning for a box in several
     tools/cache/kalpi_data.json           the committee's turnout map: "<locality code>|<ballot box>" -> neighbourhood id
                                           (downloaded when missing; delete it to refresh)
@@ -29,7 +30,8 @@ from build_neighbourhoods import inside, ring_of  # noqa: E402
 
 # ---- settings ----
 REPO = Path(__file__).resolve().parent.parent
-SOURCES = sorted((REPO / 'tools' / 'data').glob('2026_results_[0-9][0-9][0-9][0-9].csv'))
+FINAL = REPO / 'tools' / 'data' / '2026_results_final.csv'
+SOURCES = [FINAL] if FINAL.exists() else sorted((REPO / 'tools' / 'data').glob('2026_results_[0-9][0-9][0-9][0-9].csv'))
 KALPI_URL = 'https://mapvotes.bechirot.gov.il/data/votes/latest/kalpi_data.json'
 KALPI_CACHE = REPO / 'tools' / 'cache' / 'kalpi_data.json'
 SHAPES = REPO / 'govote2026' / 'neighbourhoods2026.json'
@@ -149,9 +151,10 @@ def main():
     sites = [s for s in sites if s['valid']]
 
     counted, total = len(d), len(nbr_of) - sum(k.startswith(f'{ENVELOPES}|') for k in nbr_of)
-    time = f'{SOURCES[-1].stem[-4:-2]}:{SOURCES[-1].stem[-2:]}'
-    OUT.write_text(json.dumps({'counted': counted, 'total': total, 'time': time, 'sites': sites}, ensure_ascii=False,
-                              separators=(',', ':')), encoding='utf-8')
+    final = SOURCES == [FINAL]
+    time = None if final else f'{SOURCES[-1].stem[-4:-2]}:{SOURCES[-1].stem[-2:]}'
+    OUT.write_text(json.dumps({'final': final, 'counted': counted, 'total': total, 'time': time, 'sites': sites},
+                              ensure_ascii=False, separators=(',', ':')), encoding='utf-8')
     boxes = [b for s in sites for b in s['boxes'] if not b['excluded']]
     valid = sum(b['valid'] for b in boxes)
     print(f'{counted} of {total} ballot boxes counted; left out, no neighbourhood: {unplaced}')
